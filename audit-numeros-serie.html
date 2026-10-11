@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audit numéros de série — Chabanal et fils</title><meta name="robots" content="noindex,nofollow">
+<style>
+:root{font-family:system-ui,-apple-system,Arial,sans-serif;background:#03162e;color:#eaf3ff}
+*{box-sizing:border-box}
+body{max-width:780px;margin:auto;padding:16px;line-height:1.5}
+h1{font-size:1.4rem}h2{font-size:1.12rem;margin:0 0 12px}
+.panel{border:1px solid #28577d;border-radius:12px;background:#092847;padding:15px;margin:14px 0}
+button,a.btn{display:inline-block;padding:11px 15px;border:0;border-radius:9px;background:#1579df;color:#fff;text-decoration:none;font-size:1rem;font-weight:650;margin:4px 6px 4px 0}
+button:disabled{opacity:.45}
+.muted,small{color:#bcd1e8}.ok{color:#8ce6a5}.warn{color:#ffd17a}.error{color:#ff9f9f}
+summary{cursor:pointer;font-weight:650}
+details{padding:11px 0;border-bottom:1px solid #275476}
+.row{padding:5px 0;overflow-wrap:anywhere}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;border-radius:7px;padding:11px;background:#061c35;font-size:.82rem}
+.kv{display:grid;grid-template-columns:1fr auto;gap:6px;max-width:400px;margin:5px 0}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script></head><body>
+<h1>Numéros de série — comparaison sécurisée</h1>
+<p class="muted">Diagnostic en lecture seule, à lancer sur chaque téléphone. Aucun numéro de série ni aucune fiche n'est modifié. Le résumé copié ne contient pas les numéros de série eux-mêmes.</p>
+<div class="panel"><h2>1. Vérification</h2>
+<button id="run">Comparer avec Supabase</button><button id="copy" disabled>Copier le résumé sans numéros</button>
+<p id="status" role="status">En attente.</p><div id="counters"></div></div>
+<div class="panel"><h2>2. Différences par client</h2><div id="differences">La comparaison n'a pas été effectuée.</div></div>
+<div class="panel"><h2>3. Résumé à transmettre</h2><pre id="summary">En attente.</pre></div>
+<p class="muted">Si un numéro n'est présent que d'un côté, il est signalé. Si deux valeurs différentes existent, il est classé comme conflit. Ne tentez pas de fusionner les valeurs manuellement avant notre vérification.</p>
+<a class="btn" href="./">Application</a><a class="btn" href="./diagnostic-sync.html">Diagnostic interventions</a>
+<script>
+(()=>{
+"use strict";
+const CFG="chabanal_v2_cloud_config",META="chabanal_v2_cloud_meta",
+ QUEUE="chabanal_v2_sync_queue",SERIAL="metier_equipement_numeros_serie_v1",
+ CLIENT="metier_clients_v1_2_corrigee";
+const $=id=>document.getElementById(id);
+const read=k=>{try{return JSON.parse(localStorage.getItem(k)||"null")}catch{return null}};
+const isObj=o=>o!==null&&typeof o==="object"&&!Array.isArray(o);
+const o=o=>isObj(o)?o:{};
+const own=(obj,key)=>Object.prototype.hasOwnProperty.call(obj,key);
+const norm=v=>v===undefined||v===null?"":String(v).trim();
+const normalizeName=v=>String(v||"").trim();
+function leafCompare(local,cloud){
+ const a=o(local),b=o(cloud),result=[];
+ for(const id of new Set([...Object.keys(a),...Object.keys(b)])){
+  const x=o(a[id]),y=o(b[id]);
+  const diffs=[];
+  for(const model of new Set([...Object.keys(x),...Object.keys(y)])){
+   const vL=norm(x[model]),vC=norm(y[model]);
+   if(vL===vC)continue;
+   const type=vL&&vC?"conflit":vL?"uniquement sur ce téléphone":"uniquement dans Supabase";
+   diffs.push({model,type,valueLocal:vL,valueCloud:vC});
+  }
+  if(diffs.length)result.push({id,diffs});
+ }
+ return result;
+}
+function counters(rows){
+ const totals={local:0,cloud:0,same:0,onlyLocal:0,onlyCloud:0,conflict:0};
+ for(const group of rows)for(const x of group.diffs){
+  if(x.type==="uniquement sur ce téléphone")totals.onlyLocal++;
+  else if(x.type==="uniquement dans Supabase")totals.onlyCloud++;
+  else totals.conflict++;
+ }
+ return totals;
+}
+function clientNameMap(local,cloud){
+ const result=new Map();
+ for(const c of [...(Array.isArray(cloud)?cloud:[]),...(Array.isArray(local)?local:[])]){
+  if(!c||c.id==null)continue;
+  const id=String(c.id),name=normalizeName(c.name);
+  if(!result.has(id)&&name)result.set(id,name);
+ }
+ return result;
+}
+function el(tag,txt,cls){const n=document.createElement(tag);n.textContent=txt;if(cls)n.className=cls;return n}
+let summary="";
+$("copy").onclick=async()=>{
+ try{await navigator.clipboard.writeText(summary);$("status").textContent="Résumé copié sans valeurs des numéros de série."}
+ catch(e){$("status").textContent="Copie non disponible, sélectionnez le texte du résumé."}
+};
+$("run").onclick=async()=>{
+ $("run").disabled=true;$("copy").disabled=true;
+ $("counters").replaceChildren();$("differences").replaceChildren();$("summary").textContent="En cours…";
+ const status=(text,cls)=>{$("status").textContent=text;$("status").className=cls||""};
+ try{
+  status("Lecture des données locales et Supabase…");
+  const conf=read(CFG);
+  if(!conf?.url||!conf?.key)throw Error("Supabase n'est pas configuré dans ce navigateur.");
+  if(!window.supabase)throw Error("Bibliothèque Supabase indisponible.");
+  const client=window.supabase.createClient(conf.url,conf.key,{
+   auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storage:localStorage}
+  });
+  const sess=await client.auth.getSession();
+  if(sess.error)throw sess.error;
+  if(!sess.data?.session)throw Error("Session Supabase absente. Ouvrez d'abord l'application principale.");
+  const [serialRow,clientsRow]=await Promise.all([
+   client.from("app_sync_state").select("key_name,value_json,version,updated_at").eq("key_name",SERIAL).maybeSingle(),
+   client.from("app_sync_state").select("key_name,value_json,version").eq("key_name",CLIENT).maybeSingle()
+  ]);
+  if(serialRow.error)throw serialRow.error;
+  if(clientsRow.error)throw clientsRow.error;
+  if(!serialRow.data)throw Error("Clé de numéros de série absente du cloud.");
+  const local=read(SERIAL),remote=serialRow.data.value_json;
+  if(!isObj(local)||!isObj(remote))throw Error("Format des numéros de série non reconnu : aucune action.");
+  const names=clientNameMap(read(CLIENT),clientsRow.data?.value_json);
+  const changes=leafCompare(local,remote);
+  const totals=counters(changes);
+  const meta=read(META)||{},queue=read(QUEUE)||{};
+  const cloudVersion=Number(serialRow.data.version||0),localVersion=Number(meta[SERIAL]||0);
+  const pending=own(queue,SERIAL),pendingClients=own(queue,CLIENT);
+  const rows=[
+   "AUDIT NUMÉROS DE SÉRIE — CHABANAL (lecture seule)",
+   "Date : "+new Date().toLocaleString("fr-FR"),
+   "Identifiants clients avec valeurs différentes : "+changes.length,
+   "Numéros présents uniquement sur ce téléphone : "+totals.onlyLocal,
+   "Numéros présents uniquement dans Supabase : "+totals.onlyCloud,
+   "Numéros contradictoires : "+totals.conflict,
+   "Version locale connue / Supabase (numéros) : "+localVersion+" / "+cloudVersion,
+   "En attente (numéros) : "+(pending?"oui":"non"),
+   "En attente (clients) : "+(pendingClients?"oui":"non"),
+   "Clients concernés (sans numéros de série) :"
+  ];
+  for(const c of changes){
+   const name=names.get(String(c.id))||"Client non identifié";
+   const summaryTypes=c.diffs.reduce((r,d)=>(r[d.type]=(r[d.type]||0)+1,r),{});
+   rows.push("- "+name+" : "+Object.entries(summaryTypes).map(([k,v])=>v+" "+k).join(", "));
+   const details=document.createElement("details");
+   details.append(el("summary",name+" — "+c.diffs.length+" différence(s)"));
+   for(const d of c.diffs){
+    const box=el("div","Modèle : "+d.model+" — "+d.type,"row");
+    details.append(box);
+    const a=el("div","Téléphone : "+(d.valueLocal||"(vide)"),"row");
+    const b=el("div","Supabase : "+(d.valueCloud||"(vide)"),"row");
+    details.append(a,b);
+   }
+   $("differences").append(details);
+  }
+  if(!changes.length)$("differences").append(el("p","Aucune différence significative entre les valeurs locales et Supabase.","ok"));
+  summary=rows.join("\n");
+  $("summary").textContent=summary;
+  const k=$("counters");
+  for(const [label,v] of [
+   ["Clients avec différences",changes.length],
+   ["Uniquement téléphone",totals.onlyLocal],
+   ["Uniquement Supabase",totals.onlyCloud],
+   ["Valeurs contradictoires",totals.conflict],
+   ["Version locale connue",localVersion],
+   ["Version Supabase",cloudVersion]
+  ]){const line=el("div","","kv");line.append(el("span",label),el("strong",String(v)));k.append(line)}
+  status("Comparaison terminée. Aucun numéro de série modifié.","ok");
+  $("copy").disabled=false;
+ }catch(e){status("Analyse interrompue : "+(e?.message||e),"error");$("summary").textContent="Aucune écriture réalisée.";}
+ finally{$("run").disabled=false}
+};
+})();
+</script></body></html>
