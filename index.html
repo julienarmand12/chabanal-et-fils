@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Chabanal et fils — v2.4</title>
+<title>Chabanal et fils — v2.5</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <meta name="theme-color" content="#03162e">
 <link rel="apple-touch-icon" href="./icon-192.png">
@@ -304,7 +304,7 @@ loadEquipmentCatalog();loadDiagnostics();renderDiagnosticMenu();document.getElem
 <div id="cloudModal" class="hidden">
   <div class="cloud-card">
     <div class="row" style="justify-content:space-between">
-      <h2 style="margin-top:0">☁️ V2.4 — Synchronisation automatique multi-appareils</h2>
+      <h2 style="margin-top:0">☁️ V2.5 — Synchronisation automatique multi-appareils</h2>
       <button class="secondary" onclick="closeCloudSettings()">✕</button>
     </div>
     <p class="muted">La V2.1 utilise Supabase pour centraliser les données. Le même projet doit être configuré sur tous les téléphones et ordinateurs.</p>
@@ -341,8 +341,159 @@ function meta(){try{return JSON.parse(localStorage.getItem(CLOUD_META_KEY)||"{}"
 function setMeta(x){localStorage.setItem(CLOUD_META_KEY,JSON.stringify(x))}
 function queue(){try{const q=JSON.parse(localStorage.getItem(CLOUD_QUEUE_KEY)||"{}");return q&&typeof q==="object"?q:{}}catch(e){return {}}}
 function setQueue(q){localStorage.setItem(CLOUD_QUEUE_KEY,JSON.stringify(q))}
-function queueKey(k,reason){const q=queue();q[k]={reason:reason||"automatic",queuedAt:new Date().toISOString()};setQueue(q)}
-function unqueueKey(k){const q=queue();delete q[k];setQueue(q)}
+
+function decodeRaw(raw){
+ if(raw===null||raw===undefined)return null;
+ try{return JSON.parse(raw)}catch(_){return raw}
+}
+function sameJSON(a,b){return JSON.stringify(stable(a))===JSON.stringify(stable(b))}
+function keyedClients(list){
+ const map=new Map();
+ for(const c of list){
+  if(!c||c.id==null)return null;
+  const id=String(c.id),group=map.get(id)||[];
+  group.push(c);map.set(id,group);
+ }
+ return map;
+}
+function changedPatch(k,oldRaw,newRaw,previous){
+ const before=decodeRaw(oldRaw),after=decodeRaw(newRaw);
+ if(previous && !previous.patch)return null;
+ if(k===CLIENTS_KEY){
+  if(!Array.isArray(before)||!Array.isArray(after))return null;
+  const a=keyedClients(before),b=keyedClients(after);
+  if(!a||!b)return null;
+  const patch=previous?JSON.parse(JSON.stringify(previous.patch)):{kind:"clients",changes:{}};
+  if(patch.kind!=="clients")return null;
+  for(const id of new Set([...a.keys(),...b.keys()])){
+   const original=a.get(id)||[],updated=b.get(id)||[];
+   if(sameJSON(original,updated))continue;
+   // A client ID can be shared by two legacy records. Never automatically merge those records.
+   if(original.length>1||updated.length>1)return null;
+   const existing=patch.changes[id];
+   const beforeClient=existing?existing.before:(original[0]||null);
+   const afterClient=updated[0]||null;
+   if(sameJSON(beforeClient,afterClient))delete patch.changes[id];
+   else patch.changes[id]={before:beforeClient,after:afterClient};
+  }
+  return Object.keys(patch.changes).length<=20?patch:null;
+ }
+ if(k===SERIAL_KEY){
+  if(!before||!after||typeof before!=="object"||typeof after!=="object"||
+     Array.isArray(before)||Array.isArray(after))return null;
+  const patch=previous?JSON.parse(JSON.stringify(previous.patch)):{kind:"serial",changes:{}};
+  if(patch.kind!=="serial")return null;
+  for(const clientId of new Set([...Object.keys(before),...Object.keys(after)])){
+   const a=before[clientId]&&typeof before[clientId]==="object"?before[clientId]:{};
+   const b=after[clientId]&&typeof after[clientId]==="object"?after[clientId]:{};
+   for(const model of new Set([...Object.keys(a),...Object.keys(b)])){
+    const x=Object.prototype.hasOwnProperty.call(a,model)?a[model]:null;
+    const y=Object.prototype.hasOwnProperty.call(b,model)?b[model]:null;
+    if(sameJSON(x,y))continue;
+    const item=patch.changes[clientId]||{};
+    const initial=Object.prototype.hasOwnProperty.call(item,model)?item[model].before:x;
+    if(sameJSON(initial,y))delete item[model];
+    else item[model]={before:initial,after:y};
+    if(Object.keys(item).length)patch.changes[clientId]=item;
+    else delete patch.changes[clientId];
+   }
+  }
+  return Object.values(patch.changes).reduce((n,v)=>n+Object.keys(v).length,0)<=40?patch:null;
+ }
+ return null;
+}
+function mergeInterventions(base,local,remote){
+ if(!Array.isArray(base)||!Array.isArray(local)||!Array.isArray(remote))return null;
+ const count=arr=>{
+  const m=new Map();
+  arr.forEach(x=>{const k=JSON.stringify(stable(x));m.set(k,(m.get(k)||0)+1)});
+  return m;
+ };
+ const b=count(base),l=count(local),r=count(remote);
+ for(const [k,n] of b)if((l.get(k)||0)<n||(r.get(k)||0)<n)return null;
+ const merged=remote.slice(),totals=count(merged);
+ for(const item of local){
+  const key=JSON.stringify(stable(item));
+  const wanted=Math.max(l.get(key)||0,r.get(key)||0);
+  if((totals.get(key)||0)<wanted){
+   merged.push(item);totals.set(key,(totals.get(key)||0)+1);
+  }
+ }
+ return merged;
+}
+function mergeClientFields(before,after,remote){
+ if(sameJSON(remote,after))return remote;
+ if(before===null)return remote===null?after:undefined;
+ if(after===null)return sameJSON(remote,before)?null:undefined;
+ if(remote===null||!remote||typeof remote!=="object")return undefined;
+ const out={...remote};
+ for(const field of new Set([...Object.keys(before),...Object.keys(after)])){
+  const was=Object.prototype.hasOwnProperty.call(before,field)?before[field]:undefined;
+  const now=Object.prototype.hasOwnProperty.call(after,field)?after[field]:undefined;
+  if(sameJSON(was,now))continue;
+  const current=Object.prototype.hasOwnProperty.call(remote,field)?remote[field]:undefined;
+  let chosen=now;
+  if(field==="interventions"&&!sameJSON(current,was)&&!sameJSON(current,now)){
+   chosen=mergeInterventions(was,now,current);
+   if(chosen===null)return undefined;
+  }else if(!sameJSON(current,was)&&!sameJSON(current,now))return undefined;
+  if(chosen===undefined)delete out[field];else out[field]=chosen;
+ }
+ return out;
+}
+function mergePending(k,patch,remote){
+ if(!patch)return null;
+ if(k===CLIENTS_KEY&&patch.kind==="clients"&&Array.isArray(remote)){
+  const map=keyedClients(remote);if(!map)return null;
+  const result=remote.slice();
+  for(const [id,change] of Object.entries(patch.changes||{})){
+   const candidates=map.get(id)||[];
+   if(candidates.length>1)return null;
+   const original=candidates[0]||null;
+   const merged=mergeClientFields(change.before,change.after,original);
+   if(merged===undefined)return null;
+   if(original===null){if(merged!==null)result.push(merged)}
+   else {
+    const index=result.indexOf(original);
+    if(index<0)return null;
+    if(merged===null)result.splice(index,1);
+    else result[index]=merged;
+   }
+  }
+  return result;
+ }
+ if(k===SERIAL_KEY&&patch.kind==="serial"&&remote&&typeof remote==="object"&&!Array.isArray(remote)){
+  const result=JSON.parse(JSON.stringify(remote));
+  for(const [id,models] of Object.entries(patch.changes||{})){
+   const dest=result[id]&&typeof result[id]==="object"?{...result[id]}:{};
+   for(const [model,change] of Object.entries(models)){
+    const current=Object.prototype.hasOwnProperty.call(dest,model)?dest[model]:null;
+    if(!sameJSON(current,change.before)&&!sameJSON(current,change.after))return null;
+    if(change.after===null||change.after===undefined)delete dest[model];
+    else dest[model]=change.after;
+   }
+   if(Object.keys(dest).length)result[id]=dest;else delete result[id];
+  }
+  return result;
+ }
+ return null;
+}
+
+function queueKey(k,reason,oldRaw,newRaw){
+ const q=queue(),previous=q[k]||null;
+ let patch=previous?.patch||null;
+ if(reason==="automatic-write"||reason==="automatic-delete")
+  patch=changedPatch(k,oldRaw,newRaw,previous);
+ q[k]={reason:reason||"automatic",queuedAt:new Date().toISOString(),
+  nonce:Date.now()+"-"+Math.random().toString(36).slice(2),patch};
+ setQueue(q);
+}
+function unqueueKey(k,nonce){
+ const q=queue();
+ if(nonce&&q[k]?.nonce!==nonce)return false;
+ delete q[k];setQueue(q);return true;
+}
+
 function setStatus(msg,cls){document.querySelectorAll("#cloudSyncStatus").forEach(s=>{s.textContent=msg;s.className="muted small "+(cls||"")});document.querySelectorAll("#cloudSyncDetails").forEach(d=>{d.textContent="Dernière vérification : "+new Date().toLocaleString("fr-FR")})}
 function cloudEscape(v){return String(v==null?"":v)}
 window.openCloudSettings=function(){const c=cfg()||{};document.getElementById("cloudUrl").value=c.url||"";document.getElementById("cloudKey").value=c.key||"";document.getElementById("cloudModal").classList.remove("hidden")};
@@ -357,6 +508,7 @@ async function pullKey(key){const {data,error}=await sb.from("app_sync_state").s
 // Une nouvelle version distante ne doit jamais être écrasée par un appareil en retard.
 const DELETED_KEY="metier_clients_deleted_v1",CLIENTS_KEY="metier_clients_v1_2_corrigee";
 const BACKUP_PREFIX="chabanal_v2_local_backup_20261011_";
+const SERIAL_KEY="metier_equipement_numeros_serie_v1";
 let syncPromise=null,needsRefresh=false,realtimeRetry=null;
 function rawSet(k,v){nativeSet.call(localStorage,k,JSON.stringify(v))}
 function rawDelete(k){nativeRemove.call(localStorage,k)}
@@ -407,40 +559,60 @@ async function recordConflict(k,local,remote,known,remoteVersion){
   }catch(e){console.error("Journal de conflit",e)}
 }
 function markConflict(k,reason){if(!queue()[k])queueKey(k,reason||"conflict");setStatus("⚠️ Conflit conservé : aucune donnée écrasée","cloud-warn")}
+
 async function upsertKey(k,value,reason){
-  let remote=await pullKey(k);
-  const m=meta(),known=Number(m[k]||0),remoteVersion=Number(remote?.version||0);
-  if(k===DELETED_KEY){
-    value=uniqueIds([...uniqueIds(remote?.value_json),...uniqueIds(value)]);
-    rawSet(k,value);
-  }else if(remote&&remoteVersion>known){
-    if(sameValue(k,value,remote.value_json)){
-      rawSet(k,effectiveValue(k,remote.value_json));m[k]=remoteVersion;setMeta(m);unqueueKey(k);return true;
-    }
+ const remote=await pullKey(k),known=Number(meta()[k]||0),remoteVersion=Number(remote?.version||0);
+ const startRaw=localStorage.getItem(k),ticket=queue()[k]?.nonce||null;
+ let proposed=value;
+ if(k===DELETED_KEY){
+  proposed=uniqueIds([...uniqueIds(remote?.value_json),...uniqueIds(value)]);
+ }else if(remote&&!sameValue(k,value,remote.value_json)){
+  const patch=queue()[k]?.patch||null;
+  if(patch){
+   proposed=mergePending(k,patch,remote.value_json);
+   if(proposed===null){
     await recordConflict(k,value,remote.value_json,known,remoteVersion);
     markConflict(k,"conflict");return false;
+   }
+  }else if(remoteVersion>known){
+   await recordConflict(k,value,remote.value_json,known,remoteVersion);
+   markConflict(k,"conflict");return false;
   }
-  if(remote&&sameValue(k,value,remote.value_json)){
-    m[k]=remoteVersion;setMeta(m);unqueueKey(k);return true;
+ }
+ if(remote&&sameValue(k,proposed,remote.value_json)){
+  if(localStorage.getItem(k)===startRaw&&(!ticket||queue()[k]?.nonce===ticket)){
+   if(!sameValue(k,value,remote.value_json)){rawSet(k,effectiveValue(k,remote.value_json));needsRefresh=true}
+   unqueueKey(k,ticket);
   }
-  const next=remoteVersion+1,user=(await sb.auth.getUser()).data.user?.id||null;
-  const payload={value_json:value,version:next,updated_at:new Date().toISOString(),updated_by:user,change_reason:reason||"automatic-sync"};
-  let result;
-  if(remote){
-    result=await sb.from("app_sync_state").update(payload).eq("key_name",k).eq("version",remoteVersion).select("version");
-  }else{
-    result=await sb.from("app_sync_state").insert({key_name:k,...payload}).select("version");
-  }
-  if(result.error){markConflict(k,"retry");console.error("Envoi non confirmé",k,result.error);return false}
-  if(!Array.isArray(result.data)||result.data.length!==1){markConflict(k,"concurrent-update");return false}
-  // Si un utilisateur a modifié cette clé pendant la requête, son édition reste en attente.
-  const after=parseValue(k),isStillSame=sameValue(k,after,value);
-  m[k]=next;setMeta(m);
-  if(isStillSame)unqueueKey(k);
-  else queueKey(k,"edited-during-upload");
-  try{const h=await sb.from("app_sync_history").insert({key_name:k,version:next,value_json:value,change_reason:reason||"automatic-sync",updated_by:user});if(h.error)console.warn("Historique non enregistré",h.error)}catch(e){console.warn(e)}
+  const m=meta();m[k]=remoteVersion;setMeta(m);
   return true;
+ }
+ const next=remoteVersion+1,user=(await sb.auth.getUser()).data.user?.id||null;
+ const payload={value_json:proposed,version:next,updated_at:new Date().toISOString(),
+  updated_by:user,change_reason:reason||"automatic-sync"};
+ let result;
+ if(remote)result=await sb.from("app_sync_state").update(payload).eq("key_name",k).eq("version",remoteVersion).select("version");
+ else result=await sb.from("app_sync_state").insert({key_name:k,...payload}).select("version");
+ if(result.error||!Array.isArray(result.data)||result.data.length!==1){
+  console.error("Envoi non confirmé",k,result.error||"mise à jour concurrente");
+  markConflict(k,"retry");return false;
+ }
+ const m=meta();m[k]=next;setMeta(m);
+ if(localStorage.getItem(k)===startRaw&&(!ticket||queue()[k]?.nonce===ticket)){
+  if(!sameValue(k,value,proposed)){
+   rawSet(k,effectiveValue(k,proposed));needsRefresh=true;
+  }else if(k===DELETED_KEY&&!sameValue(k,parseValue(k),proposed))rawSet(k,proposed);
+  unqueueKey(k,ticket);
+ }
+ // Otherwise the new local edit remains queued, without overwriting it.
+ try{
+  const h=await sb.from("app_sync_history").insert({key_name:k,version:next,
+   value_json:proposed,change_reason:reason||"automatic-sync",updated_by:user});
+  if(h.error)console.warn("Historique non enregistré",h.error);
+ }catch(e){console.warn("Historique non enregistré",e)}
+ return true;
 }
+
 async function pullAll(){
   if(!await ensureAuth())return false;
   // Les marqueurs de suppression doivent être lus avant les fiches clients.
@@ -460,13 +632,16 @@ async function pullAll(){
       if(sameValue(k,local,r.value_json)){
         if(k===CLIENTS_KEY){const filtered=effectiveValue(k,r.value_json);if(!sameValue(k,local,filtered))needsRefresh=true;rawSet(k,filtered)}
         m[k]=rv;setMeta(m);unqueueKey(k);
-      }else if(rv>known){
-        await recordConflict(k,local,r.value_json,known,rv);
-        markConflict(k,"conflict");
       }
+      // When pending, let flushQueue perform a safe three-way reconciliation.
+      // An unresolved edit stays queued rather than replacing either copy.
       continue;
     }
     if(known===0||rv>known){
+      const home=document.getElementById("home");
+      if(k===CLIENTS_KEY&&home&&home.classList.contains("hidden")){
+        needsRefresh=true;continue;
+      }
       const next=effectiveValue(k,r.value_json);
       if(local!==null&&!sameValue(k,local,next)){
         if(!backupBeforeRemote(k,local,rv)){markConflict(k,"backup-required");continue}
@@ -501,21 +676,30 @@ function refreshMetierFromCloud(){
   }catch(e){console.error("Actualisation de l'écran impossible",e);return false}
 }
 window.refreshMetierFromCloud=refreshMetierFromCloud;
+
 async function startRealtime(){
-  if(!sb||realtimeChannel)return;
-  realtimeChannel=sb.channel("chabanal-v2-sync").on("postgres_changes",{event:"*",schema:"public",table:"app_sync_state"},payload=>{
-    const row=payload.new||payload.old;
-    if(!row||!CLOUD_KEYS.includes(row.key_name))return;
-    clearTimeout(window.__cloudRemoteTimer);
-    window.__cloudRemoteTimer=setTimeout(()=>autoStartCloud().catch(console.error),400);
-  }).subscribe(state=>{
-    if(state==="CHANNEL_ERROR"||state==="TIMED_OUT"||state==="CLOSED"){
-      realtimeChannel=null;
-      if(Object.keys(queue()).length)setStatus("⚠️ Modifications en attente — connexion à vérifier","cloud-warn");
-      else setStatus("⚠️ Connexion temps réel interrompue — nouvelle tentative","cloud-warn");
-    }
+ if(!sb||realtimeChannel)return;
+ const channel=sb.channel("chabanal-v2-sync").on("postgres_changes",
+  {event:"*",schema:"public",table:"app_sync_state"},payload=>{
+   const row=payload.new||payload.old;
+   if(!row||!CLOUD_KEYS.includes(row.key_name))return;
+   clearTimeout(window.__cloudRemoteTimer);
+   window.__cloudRemoteTimer=setTimeout(()=>autoStartCloud().catch(console.error),400);
   });
+ realtimeChannel=channel;
+ channel.subscribe(state=>{
+  if(state==="SUBSCRIBED"){clearTimeout(realtimeRetry);realtimeRetry=null;return}
+  if(state==="CHANNEL_ERROR"||state==="TIMED_OUT"||state==="CLOSED"){
+   if(realtimeChannel!==channel)return;
+   realtimeChannel=null;
+   try{sb.removeChannel(channel).catch(console.warn)}catch(e){console.warn(e)}
+   clearTimeout(realtimeRetry);
+   realtimeRetry=setTimeout(()=>autoStartCloud().catch(console.error),5000);
+   setStatus("⚠️ Connexion temps réel interrompue — nouvelle tentative","cloud-warn");
+  }
+ });
 }
+
 async function autoStartCloud(){
   if(syncPromise)return syncPromise;
   syncPromise=(async()=>{
@@ -533,7 +717,7 @@ async function autoStartCloud(){
       if(needsRefresh&&!refreshMetierFromCloud())setStatus("Données reçues — revenir à l’accueil pour actualiser","cloud-warn");
       else if(Object.keys(queue()).length)setStatus("⚠️ Synchronisation partielle : modifications en conflit conservées","cloud-warn");
       else setStatus("☁️ Synchronisation automatique active","cloud-ok");
-      return true;
+      return Object.keys(queue()).length===0;
     }catch(e){
       console.error(e);setStatus("Erreur de synchronisation — données locales conservées","cloud-error");return false;
     }finally{syncing=false}
@@ -545,10 +729,37 @@ window.cloudSyncNow=async function(){
   if(!ok)alert("Synchronisation incomplète. Vérifiez la connexion et la session Supabase. Les données locales sont conservées.");
 };
 // Vérification périodique : un appareil qui a manqué Realtime se remet à jour.
-setInterval(()=>{if(document.visibilityState==="visible"&&cfg())autoStartCloud().catch(console.error)},120000);
+setInterval(()=>{if(document.visibilityState==="visible"&&cfg())autoStartCloud().catch(console.error)},60000);
 window.cloudFirstMigration=async function(){if(!await initCloud(true))return;if(!await ensureAuth()){alert("Connectez d'abord un utilisateur Supabase Auth.");return}if(!confirm("Importer les données locales V1.7 dans la base en ligne ? Cette opération est à faire sur le premier appareil uniquement."))return;try{syncing=true;window.cloudSyncReadyForWrites=false;for(const k of CLOUD_KEYS){let v=null,raw=localStorage.getItem(k);try{v=raw===null?null:JSON.parse(raw)}catch(e){v=raw}const r=await pullKey(k);if(r&&r.value_json!==null){const overwrite=confirm("La clé « "+k+" » existe déjà dans le cloud. Remplacer le cloud par les données locales ?\n\nOui = local → cloud\nNon = conserver le cloud");if(!overwrite)continue}await upsertKey(k,v,"initial-v1.7-migration")}setStatus("Migration V1.7 → cloud terminée","cloud-ok");alert("Migration terminée. Les données locales ont été enregistrées dans la base.")}catch(e){console.error(e);alert("Migration impossible : "+(e.message||e))}finally{window.cloudSyncReadyForWrites=true;syncing=false;await startRealtime()}};
 window.cloudPullReplaceLocal=async function(){if(!await initCloud(true))return;if(!await ensureAuth()){alert("Connectez d'abord un utilisateur Supabase Auth.");return}if(!confirm("Remplacer les données locales par la copie cloud ?"))return;try{syncing=true;window.cloudSyncReadyForWrites=false;const m=meta();for(const k of CLOUD_KEYS){const r=await pullKey(k);if(r){localStorage.setItem(k,JSON.stringify(r.value_json));m[k]=Number(r.version)}}setMeta(m);location.reload()}catch(e){console.error(e);alert("Récupération cloud impossible : "+(e.message||e))}finally{syncing=false}};
-const nativeSet=Storage.prototype.setItem,nativeRemove=Storage.prototype.removeItem;Storage.prototype.setItem=function(k,v){nativeSet.call(this,k,v);if(this===localStorage&&CLOUD_KEYS.includes(k)){queueKey(k,"automatic-write");if(window.cloudSyncReadyForWrites){clearTimeout(window.__cloudSyncTimer);window.__cloudSyncTimer=setTimeout(()=>autoStartCloud().catch(console.error),700)}}};Storage.prototype.removeItem=function(k){nativeRemove.call(this,k);if(this===localStorage&&CLOUD_KEYS.includes(k)){queueKey(k,"automatic-delete");if(window.cloudSyncReadyForWrites){clearTimeout(window.__cloudSyncTimer);window.__cloudSyncTimer=setTimeout(()=>autoStartCloud().catch(console.error),700)}}};
+const nativeSet=Storage.prototype.setItem,nativeGet=Storage.prototype.getItem,nativeRemove=Storage.prototype.removeItem;
+function scheduleSync(){if(window.cloudSyncReadyForWrites){clearTimeout(window.__cloudSyncTimer);window.__cloudSyncTimer=setTimeout(()=>autoStartCloud().catch(console.error),700)}}
+Storage.prototype.setItem=function(k,v){
+ if(this!==localStorage||!CLOUD_KEYS.includes(k))return nativeSet.call(this,k,v);
+ const before=nativeGet.call(this,k),after=String(v);
+ if(before===after)return nativeSet.call(this,k,v);
+ const previousQueue=nativeGet.call(this,CLOUD_QUEUE_KEY);
+ queueKey(k,"automatic-write",before,after);
+ try{nativeSet.call(this,k,v)}
+ catch(e){
+  try{if(previousQueue===null)nativeRemove.call(this,CLOUD_QUEUE_KEY);else nativeSet.call(this,CLOUD_QUEUE_KEY,previousQueue)}catch(_){}
+  throw e;
+ }
+ scheduleSync();
+};
+Storage.prototype.removeItem=function(k){
+ if(this!==localStorage||!CLOUD_KEYS.includes(k))return nativeRemove.call(this,k);
+ const before=nativeGet.call(this,k);
+ if(before===null)return;
+ const previousQueue=nativeGet.call(this,CLOUD_QUEUE_KEY);
+ queueKey(k,"automatic-delete",before,null);
+ try{nativeRemove.call(this,k)}
+ catch(e){
+  try{if(previousQueue===null)nativeRemove.call(this,CLOUD_QUEUE_KEY);else nativeSet.call(this,CLOUD_QUEUE_KEY,previousQueue)}catch(_){}
+  throw e;
+ }
+ scheduleSync();
+};
 window.cloudSyncReadyForWrites=false;
 window.addEventListener("online",()=>autoStartCloud());
 window.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")autoStartCloud()});
