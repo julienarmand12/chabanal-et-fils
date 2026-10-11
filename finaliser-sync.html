@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Finalisation synchronisation — Chabanal et fils</title><meta name="robots" content="noindex,nofollow">
+<style>
+:root{font-family:system-ui,Arial,sans-serif;background:#03162e;color:#ecf3ff}
+*{box-sizing:border-box}body{max-width:760px;margin:auto;padding:16px;line-height:1.55}
+h1{font-size:1.45rem}h2{font-size:1.15rem;margin:0 0 12px}
+.panel{border:1px solid #28577d;border-radius:13px;background:#092847;padding:15px;margin:16px 0}
+button,a.btn{display:inline-block;padding:12px 16px;margin:4px 6px 4px 0;border:0;border-radius:9px;color:#fff;background:#147ce0;font-size:1rem;font-weight:700;text-decoration:none}
+button:disabled{opacity:.45}.fix{background:#1b7957}
+small,.subtle{color:#c6d5e8}.ok{color:#80e7a4}.warn{color:#ffd184}.error{color:#ff9f9f}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#061b34;border-radius:8px;padding:12px;font-size:.9rem}
+label{display:flex;align-items:start;gap:10px;margin:15px 0}
+input[type=checkbox]{width:21px;height:21px;flex-shrink:0}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head><body>
+<h1>Finaliser la synchronisation</h1>
+<p class="subtle">Téléphone 2 — diagnostic des dernières différences et correction ciblée du mois d'entretien de Zaurin. Aucune autre fiche ni aucun numéro de série ne sera modifié.</p>
+<div class="panel"><h2>1. Contrôle sans écriture</h2>
+<button id="verify">Vérifier les données</button>
+<p id="status" role="status">En attente du contrôle.</p>
+<pre id="report">—</pre></div>
+<div class="panel"><h2>2. Sauvegarde</h2>
+<button id="backup" disabled>Télécharger la sauvegarde actualisée</button>
+<label><input id="confirmed" type="checkbox" disabled>J'ai vérifié que la sauvegarde JSON est bien dans les téléchargements du téléphone 2.</label>
+</div>
+<div class="panel"><h2>3. Corriger le mois d'entretien</h2>
+<p>Uniquement si la vérification confirme que Zaurin est <strong>la seule différence de fiche</strong>, avec le mois <strong>10</strong> sur le téléphone et vide dans Supabase.</p>
+<button id="apply" class="fix" disabled>Enregistrer le mois de Zaurin dans Supabase</button>
+<p id="result" role="status"></p></div>
+<div class="panel"><h2>4. Numéros de série</h2>
+<p id="serial">Comparaison non effectuée.</p>
+<small>Si les numéros de série diffèrent, aucune correction automatique n'est réalisée. Ils seront examinés séparément pour éviter tout écrasement.</small></div>
+<p><a class="btn" href="./diagnostic-sync.html">Diagnostic complet</a><a class="btn" href="./">Application principale</a></p>
+<script>
+(()=>{"use strict";
+const CLIENT="metier_clients_v1_2_corrigee",DEL="metier_clients_deleted_v1",
+ SERIAL="metier_equipement_numeros_serie_v1",CFG="chabanal_v2_cloud_config",
+ QUEUE="chabanal_v2_sync_queue",META="chabanal_v2_cloud_meta";
+const $=id=>document.getElementById(id);
+const get=k=>{try{return JSON.parse(localStorage.getItem(k)||"null")}catch{return null}};
+const arr=x=>Array.isArray(x)?x:[];
+const stable=x=>Array.isArray(x)?x.map(stable):x&&typeof x==="object"?Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x;
+const js=x=>JSON.stringify(stable(x));
+const normalizeName=x=>String(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toLowerCase();
+const visible=(list,deleted)=>{const del=new Set(arr(deleted).map(String));return arr(list).filter(c=>c&&c.id!=null&&!del.has(String(c.id)))};
+const normalizeClient=c=>({...c,email:c.email||"",maintenanceMonth:c.maintenanceMonth||"",interventions:arr(c.interventions)});
+function groups(xs){const groups=new Map();for(const c of xs){const id=String(c.id),a=groups.get(id)||[];a.push(c);groups.set(id,a)}return groups}
+const nInter=xs=>xs.reduce((count,c)=>count+arr(c.interventions).length,0);
+function validate(lRaw,lDel,rRaw,rDel){
+ if(!Array.isArray(lRaw)||!Array.isArray(rRaw))throw Error("Données clients absentes.");
+ const l=visible(lRaw,lDel),r=visible(rRaw,rDel),lg=groups(l),rg=groups(r);
+ if(l.length!==738||r.length!==738||nInter(l)!==3673||nInter(r)!==3673)
+  throw Error("Compteurs inattendus : la réparation est suspendue pour éviter toute perte.");
+ if(lg.size!==rg.size||lg.size!==737||[...lg.keys()].some(k=>!rg.has(k)))
+  throw Error("Identifiants différents entre les deux copies. Aucune écriture.");
+ if(js([...new Set(arr(lDel).map(String))].sort())!==js([...new Set(arr(rDel).map(String))].sort()))
+  throw Error("Suppressions différentes entre les deux copies.");
+ const changes=[];let duplicates=0;
+ for(const [id,lc] of lg){
+  const rc=rg.get(id);
+  if(lc.length!==rc.length)throw Error("Nombre de fiches différent pour l'identifiant : "+id);
+  if(lc.length>1)duplicates++;
+  if(lc.length>1){
+   const sigs=xs=>xs.map(x=>js(normalizeClient(x))).sort();
+   if(js(sigs(lc))!==js(sigs(rc)))throw Error("Différence sur une fiche portant un identifiant partagé.");
+   continue;
+  }
+  const aa=normalizeClient(lc[0]),bb=normalizeClient(rc[0]);
+  if(js(aa)===js(bb))continue;
+  const keys=[...new Set([...Object.keys(aa),...Object.keys(bb)])].filter(k=>js(aa[k])!==js(bb[k]));
+  changes.push({id,local:aa,remote:bb,keys});
+ }
+ if(changes.length!==1)throw Error("Différences client détectées : "+changes.length+". Il faut exactement Zaurin.");
+ const x=changes[0];
+ if(normalizeName(x.local.name)!=="zaurin"||normalizeName(x.remote.name)!=="zaurin"||
+    x.keys.length!==1||x.keys[0]!=="maintenanceMonth"||
+    x.local.maintenanceMonth!=="10"||x.remote.maintenanceMonth!=="")
+  throw Error("Les différences ne correspondent pas uniquement au mois de Zaurin.");
+ return {id:x.id,visibleCount:l.length,interventions:nInter(l),duplicates,change:x};
+}
+let saved=null,busy=false,backupRequested=false,client=null;
+function state(){const valid=!!saved&&!busy;
+ $("verify").disabled=busy;$("backup").disabled=!valid;
+ $("confirmed").disabled=!valid||!backupRequested;
+ $("apply").disabled=!valid||!backupRequested||!$("confirmed").checked;
+}
+function reset(){saved=null;backupRequested=false;$("confirmed").checked=false;state()}
+function set(id,message,cls){$(id).textContent=message;$(id).className=cls||""}
+function serialSummary(local,remote){
+ if(remote==null)return "Aucune copie cloud des numéros de série trouvée : à vérifier séparément.";
+ if(js(local)===js(remote))return "Numéros de série : copie locale identique à Supabase. Un éventuel état « en attente » semble être un marqueur périmé.";
+ const l=local&&typeof local==="object"?local:{},r=remote&&typeof remote==="object"?remote:{};
+ const affected=new Set([...Object.keys(l),...Object.keys(r)].filter(id=>js(l[id])!==js(r[id])));
+ return "Numéros de série : valeurs différentes entre le téléphone et Supabase ("+affected.size+" identifiant(s) client concernés). Aucune modification automatique.";
+}
+async function connect(){
+ const c=get(CFG);if(!c?.url||!c?.key)throw Error("Configuration Supabase absente sur ce navigateur.");
+ if(!window.supabase)throw Error("Bibliothèque Supabase non chargée.");
+ const sb=window.supabase.createClient(c.url,c.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storage:localStorage}});
+ const {data,error}=await sb.auth.getSession();if(error)throw error;
+ if(!data?.session)throw Error("Session Supabase absente : connectez-vous dans l'application.");
+ return sb;
+}
+async function fetchAll(sb){
+ const keys=[CLIENT,DEL,SERIAL];
+ const rows=await Promise.all(keys.map(async key=>{
+  const {data,error}=await sb.from("app_sync_state").select("key_name,value_json,version").eq("key_name",key).maybeSingle();
+  if(error)throw error;return data;
+ }));
+ if(!rows[0]||!Number.isInteger(Number(rows[0].version))||Number(rows[0].version)<1)throw Error("Copie clients Supabase invalide.");
+ return {clients:rows[0],deleted:rows[1],serial:rows[2]};
+}
+$("confirmed").onchange=state;
+$("verify").onclick=async()=>{
+ reset();busy=true;state();set("result","");set("status","Vérification en cours…");
+ try{
+  client=await connect();
+  const local={clients:get(CLIENT),deleted:get(DEL),serial:get(SERIAL),meta:get(META),queue:get(QUEUE)};
+  const remote=await fetchAll(client);
+  const check=validate(local.clients,local.deleted,remote.clients.value_json,remote.deleted?.value_json);
+  saved={local,remote,check,localSig:js(local.clients),delSig:js(local.deleted),
+     remoteSig:js(remote.clients.value_json),remoteDeletedSig:js(remote.deleted?.value_json)};
+  set("report",[
+   "Clients : "+check.visibleCount+" (local = cloud)",
+   "Interventions : "+check.interventions+" (local = cloud)",
+   "Version locale connue : "+Number(local.meta?.[CLIENT]||0),
+   "Version Supabase : "+Number(remote.clients.version),
+   "Identifiants partagés par plusieurs fiches : "+check.duplicates,
+   "Différence unique : Zaurin — mois d'entretien 10 (téléphone) / vide (cloud)",
+   "Clés en attente : "+(Object.keys(local.queue||{}).join(", ")||"aucune")
+  ].join("\n"));
+  set("serial",serialSummary(local.serial,remote.serial?.value_json));
+  set("status","Contrôle réussi : les autres fiches sont identiques. Aucun changement effectué.","ok");
+ }catch(e){
+  set("report","—");set("serial","Comparaison non effectuée.");
+  set("status","Arrêt de sécurité : "+(e?.message||e),"error");
+ }finally{busy=false;state()}
+};
+$("backup").onclick=()=>{
+ if(!saved||busy)return;
+ try{
+  const pack={label:"Sauvegarde Chabanal avant mise à jour Zaurin",createdAt:new Date().toISOString(),
+   local:{clients:saved.local.clients,deletedClientIds:saved.local.deleted,serialNumbers:saved.local.serial,meta:saved.local.meta,queue:saved.local.queue},
+   cloud:{clients:saved.remote.clients.value_json,deletedClientIds:saved.remote.deleted?.value_json,
+     serialNumbers:saved.remote.serial?.value_json,clientsVersion:saved.remote.clients.version,
+     serialVersion:saved.remote.serial?.version}};
+  const blob=new Blob([JSON.stringify(pack)],{type:"application/json"});
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download="sauvegarde_chabanal_avant_zaurin_"+new Date().toISOString().slice(0,10)+".json";
+  document.body.append(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+  backupRequested=true;state();
+  set("status","Sauvegarde demandée. Vérifiez le fichier dans vos téléchargements.","warn");
+ }catch(e){reset();set("status","Impossible de créer la sauvegarde : "+(e?.message||e),"error")}
+};
+$("apply").onclick=async()=>{
+ if(!saved||!backupRequested||!$("confirmed").checked||busy)return;
+ if(!confirm("Confirmer la mise à jour du seul mois d'entretien de Zaurin (10) dans Supabase ? Aucun autre champ ne sera modifié."))return;
+ busy=true;state();set("result","Vérification finale avant écriture…","warn");
+ try{
+  const nowL=get(CLIENT),nowD=get(DEL);
+  if(js(nowL)!==saved.localSig||js(nowD)!==saved.delSig)
+   throw Error("Données locales modifiées depuis le contrôle : vérifiez à nouveau.");
+  const nowR=await fetchAll(client);
+  if(Number(nowR.clients.version)!==Number(saved.remote.clients.version)||
+   js(nowR.clients.value_json)!==saved.remoteSig||
+   js(nowR.deleted?.value_json)!==saved.remoteDeletedSig)
+   throw Error("Supabase a changé. L'opération est suspendue : recommencez la vérification.");
+  const current=validate(nowL,nowD,nowR.clients.value_json,nowR.deleted?.value_json);
+  if(current.id!==saved.check.id)throw Error("Fiche ciblée modifiée.");
+  let patched=0;
+  const after=nowR.clients.value_json.map(c=>{
+   if(String(c?.id)!==current.id)return c;
+   patched++;return {...c,maintenanceMonth:"10"};
+  });
+  if(patched!==1)throw Error("Zaurin absent ou non unique dans la copie Supabase.");
+  const auth=await client.auth.getUser();
+  if(auth.error||!auth.data?.user)throw Error("La session Supabase ne permet pas l'écriture.");
+  const v=Number(nowR.clients.version)+1;
+  const {data,error}=await client.from("app_sync_state").update({
+   value_json:after,version:v,updated_at:new Date().toISOString(),updated_by:auth.data.user.id,
+   change_reason:"reconciliation-mois-zaurin-2026-10-11"
+  }).eq("key_name",CLIENT).eq("version",nowR.clients.version).select("version");
+  if(error)throw error;
+  if(!Array.isArray(data)||data.length!==1)
+   throw Error("Mise à jour non confirmée (possiblement concurrente). Ne réessayez pas sans diagnostic.");
+  const verified=await fetchAll(client);
+  if(Number(verified.clients.version)<v)throw Error("Version cloud incohérente après écriture.");
+  const newTarget=verified.clients.value_json.filter(c=>String(c?.id)===current.id);
+  if(newTarget.length!==1||newTarget[0].maintenanceMonth!=="10")
+   throw Error("Contrôle final incertain : ne relancez pas l'écriture.");
+  try{
+   const h=await client.from("app_sync_history").insert({
+    key_name:CLIENT,version:v,value_json:after,
+    change_reason:"reconciliation-mois-zaurin-2026-10-11",updated_by:auth.data.user.id
+   });
+   if(h.error)console.warn("Historique non enregistré : ",h.error.message);
+  }catch(e){console.warn("Journal de synchronisation non disponible",e)}
+  set("result","✅ Mois de Zaurin enregistré dans Supabase (version "+v+"). Retournez dans l'application sur les deux téléphones, actualisez, puis refaites le diagnostic. Ne relancez pas cette réparation.","ok");
+  reset();
+ }catch(e){
+  reset();
+  set("result","⚠️ "+(e?.message||e)+" Aucune nouvelle tentative sans vérification.","error");
+ }finally{busy=false;state()}
+};
+state();
+})();
+</script></body></html>
