@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Diagnostic synchronisation — Chabanal et fils</title>
+<meta name="robots" content="noindex">
+<style>
+:root{font-family:system-ui,Arial,sans-serif;color:#eaf2ff;background:#03162e}*{box-sizing:border-box}
+body{max-width:820px;margin:auto;padding:18px;line-height:1.55}
+h1{font-size:1.4rem}h2{font-size:1.12rem;margin-top:26px}
+button,a.btn{display:inline-block;appearance:none;background:#1878dd;border:0;border-radius:9px;padding:12px 16px;color:white;font-weight:650;font-size:1rem;text-decoration:none;margin:5px 5px 5px 0}
+button:disabled{opacity:.5}
+section{background:#092b4e;border:1px solid #21547f;border-radius:12px;padding:14px;margin:14px 0;overflow-wrap:anywhere}
+small,.muted{color:#bfd0e5}.ok{color:#8de6a3}.warn{color:#ffd180}.bad{color:#ff9797}
+.stat{display:grid;grid-template-columns:1fr 1fr;gap:12px}.stat>div{background:#051d35;border-radius:10px;padding:10px}
+.big{font-size:1.8rem;font-weight:750}
+pre{white-space:pre-wrap;word-break:break-word;font:0.84rem ui-monospace,monospace}
+details{margin:8px 0;border-top:1px solid #235177;padding-top:8px}
+@media(max-width:500px){.stat{grid-template-columns:1fr}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script></head>
+<body>
+<h1>Diagnostic de synchronisation</h1>
+<p class="muted">Chabanal et fils · Lecture seule · V1.0. Ce contrôle ne modifie ni les fiches clients, ni les interventions, ni la base Supabase.</p>
+<p><a class="btn" href="./">Retour à l'application</a><button id="run">Analyser cet appareil</button><button id="copy" disabled>Copier le résumé</button></p>
+<section><div id="status">Appuyer sur « Analyser cet appareil ».</div></section>
+<section><h2>Données locales</h2><div id="local"></div></section>
+<section><h2>Données Supabase</h2><div id="cloud">Non vérifiées.</div></section>
+<section><h2>Comparaison</h2><div id="diff">Non effectuée.</div></section>
+<p class="muted"><small>Important : si les appareils affichent des valeurs différentes, ne supprimez aucune intervention et n'utilisez pas « Restaurer » ou « Importer ». Transmettez uniquement les compteurs et le résumé technique.</small></p>
+<script>
+(()=>{'use strict';
+const CLIENT='metier_clients_v1_2_corrigee',DELETE='metier_clients_deleted_v1',META='chabanal_v2_cloud_meta',QUEUE='chabanal_v2_sync_queue',CFG='chabanal_v2_cloud_config';
+const $=id=>document.getElementById(id);
+const get=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}};
+const arr=v=>Array.isArray(v)?v:[];
+const stable=v=>Array.isArray(v)?v.map(stable):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,stable(v[k])])):v;
+const signature=x=>JSON.stringify(stable(x));
+const overview=(clients,del)=>{const deleted=new Set(arr(del));const visible=arr(clients).filter(c=>c&&!deleted.has(c.id));
+ const n=visible.reduce((sum,c)=>sum+arr(c.interventions).length,0);
+ let duplicates=0;
+ for(const c of visible){const m=new Map();for(const item of arr(c.interventions)){const s=signature(item);m.set(s,(m.get(s)||0)+1)}for(const count of m.values())duplicates+=Math.max(0,count-1)}
+ return {rawCount:arr(clients).length,clients:visible,clientsCount:visible.length,interventions:n,deletedCount:deleted.size,exactDuplicates:duplicates};
+};
+const text=(id,v)=>$(id).textContent=v;
+const line=(parent,label,value)=>{const el=document.createElement('div');const b=document.createElement('strong');b.textContent=label+' : ';el.append(b,document.createTextNode(String(value)));parent.append(el)};
+const versionValue=(meta,k)=>meta&&typeof meta==='object'?Number(meta[k]||0):0;
+function compare(local,remote){const lm=new Map(local.clients.map(c=>[String(c.id),c])),rm=new Map(remote.clients.map(c=>[String(c.id),c]));
+ const issues=[];let onlyHere=0,onlyCloud=0,changed=0;for(const id of new Set([...lm.keys(),...rm.keys()])){
+  const l=lm.get(id),r=rm.get(id);if(!l){onlyCloud++;issues.push({name:r.name||id,info:'Fiche uniquement dans le cloud'});continue}
+  if(!r){onlyHere++;issues.push({name:l.name||id,info:'Fiche uniquement sur cet appareil'});continue}
+  const li=arr(l.interventions),ri=arr(r.interventions);
+  const make=xs=>{const m=new Map();for(const x of xs){const s=signature(x);m.set(s,(m.get(s)||0)+1)}return m};
+  const a=make(li),b=make(ri);let localOnly=0,cloudOnly=0;
+  for(const [s,n] of a)localOnly+=Math.max(0,n-(b.get(s)||0));
+  for(const [s,n] of b)cloudOnly+=Math.max(0,n-(a.get(s)||0));
+  if(localOnly||cloudOnly){changed++;issues.push({name:l.name||r.name||id,info:li.length+' locale(s), '+ri.length+' cloud · '+localOnly+' absente(s) du cloud, '+cloudOnly+' absente(s) du téléphone'})}
+ }
+ return {onlyHere,onlyCloud,changed,issues};
+}
+let lastSummary='';
+$('copy').onclick=async()=>{try{await navigator.clipboard.writeText(lastSummary);text('status','Résumé copié.')}catch(e){text('status','Copie indisponible : sélectionnez le résumé affiché.')}};
+$('run').onclick=async()=>{
+ $('run').disabled=true;$('copy').disabled=true;
+ try{
+ const localClients=get(CLIENT),localDeleted=get(DELETE),lm=get(META)||{},pending=get(QUEUE)||{},configuration=get(CFG);
+ const l=overview(localClients,localDeleted);
+ const lp=$('local');lp.replaceChildren();
+ line(lp,'Clients visibles',l.clientsCount);line(lp,'Interventions',l.interventions);
+ line(lp,'Clients bruts',l.rawCount);line(lp,'Suppressions enregistrées',l.deletedCount);
+ line(lp,'Doublons strictement identiques',l.exactDuplicates);
+ line(lp,'Version locale connue (clients)',versionValue(lm,CLIENT));
+ line(lp,'Clés en attente de synchronisation',Object.keys(pending).join(', ')||'Aucune');
+ if(!Array.isArray(localClients))throw new Error('Aucune liste de clients locale utilisable sur cet appareil.');
+ let cloudResult='Non vérifié',remote=null,remoteVersion='?', cloudError='';
+ if(!configuration?.url||!configuration?.key)cloudError='Configuration Supabase absente pour cet emplacement web.';
+ else if(!window.supabase)cloudError='Bibliothèque Supabase indisponible (réseau ou bloqueur).';
+ else{
+   text('status','Lecture de la copie Supabase en cours…');
+   try{
+     const sb=window.supabase.createClient(configuration.url,configuration.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storage:localStorage}});
+     const session=await sb.auth.getSession();if(session.error)throw session.error;
+     if(!session.data.session)throw new Error('Session Supabase absente : ouvrez d’abord l’application puis reconnectez-vous si nécessaire.');
+     const [cr,dr]=await Promise.all([
+       sb.from('app_sync_state').select('key_name,value_json,version').eq('key_name',CLIENT).maybeSingle(),
+       sb.from('app_sync_state').select('key_name,value_json,version').eq('key_name',DELETE).maybeSingle()
+     ]);
+     if(cr.error)throw cr.error;if(dr.error)throw dr.error;if(!cr.data)throw new Error('Aucune copie clients trouvée dans app_sync_state.');
+     remote=overview(cr.data.value_json,dr.data?.value_json);
+     remoteVersion=Number(cr.data.version||0);
+     cloudResult='OK';
+   }catch(e){cloudError=e?.message||String(e)}
+ }
+ const cloud=$('cloud');cloud.replaceChildren();
+ if(remote){line(cloud,'Clients visibles',remote.clientsCount);line(cloud,'Interventions',remote.interventions);line(cloud,'Clients bruts',remote.rawCount);line(cloud,'Suppressions enregistrées',remote.deletedCount);line(cloud,'Version cloud (clients)',remoteVersion)}
+ else line(cloud,'État',cloudError);
+ const diff=$('diff');diff.replaceChildren();
+ let issueCount='indéterminé';
+ if(remote){
+  const d=compare(l,remote);issueCount=d.issues.length;
+  line(diff,'Clients absents de ce téléphone',d.onlyCloud);
+  line(diff,'Clients absents du cloud',d.onlyHere);
+  line(diff,'Clients avec interventions différentes',d.changed);
+  line(diff,'Nombre de fiches présentant une différence',d.issues.length);
+  if(d.issues.length){const det=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Voir les clients concernés (uniquement sur votre écran)';det.append(summary);for(const x of d.issues.slice(0,100)){const p=document.createElement('p');p.textContent=x.name+' — '+x.info;det.append(p)}if(d.issues.length>100){const p=document.createElement('p');p.textContent='… et '+(d.issues.length-100)+' autres';det.append(p)}diff.append(det)}
+ }
+ else text('diff','Comparaison indisponible tant que la connexion au cloud n’a pas été vérifiée.');
+ lastSummary=[
+  'DIAGNOSTIC CHABANAL (lecture seule)',
+  'Date : '+new Date().toLocaleString('fr-FR'),
+  'Local : '+l.clientsCount+' clients, '+l.interventions+' interventions',
+  'Cloud : '+(remote?remote.clientsCount+' clients, '+remote.interventions+' interventions':'indisponible'),
+  'Version locale connue : '+versionValue(lm,CLIENT),
+  'Version cloud : '+remoteVersion,
+  'En attente : '+(Object.keys(pending).join(', ')||'aucune'),
+  'Différences clients : '+issueCount,
+  'Doublons stricts locaux : '+l.exactDuplicates,
+  'Connexion cloud : '+cloudResult,
+  'Erreur : '+cloudError
+ ].join('\n');
+ const pre=document.createElement('pre');pre.textContent=lastSummary;diff.append(pre);
+ $('copy').disabled=false;
+ text('status',remote?'Contrôle terminé : données locales et cloud comparées.':'Contrôle local terminé. Vérification cloud non disponible.');
+ }catch(e){text('status','Analyse incomplète : '+(e?.message||e))}
+ finally{$('run').disabled=false}
+};
+})();
+</script>
+</body></html>
