@@ -651,6 +651,8 @@ async function upsertKey(k,value,reason){
 
 async function pullAll(){
   if(!await ensureAuth())return false;
+  // Recalculer à chaque passage : un ancien report ne doit pas bloquer l'écran.
+  pendingClientCloudPull=false;
   // Les marqueurs de suppression doivent être lus avant les fiches clients.
   for(const k of [DELETED_KEY,...CLOUD_KEYS.filter(x=>x!==DELETED_KEY)]){
     const r=await pullKey(k);if(!r)continue;
