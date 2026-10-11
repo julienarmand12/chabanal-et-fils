@@ -423,7 +423,7 @@ function mergeInterventions(base,local,remote){
 }
 function mergeClientFields(before,after,remote){
  if(sameJSON(remote,after))return remote;
- if(before===null)return remote===null?after:null;
+ if(before===null)return remote===null?after:undefined;
  if(after===null)return sameJSON(remote,before)?null:undefined;
  if(remote===null||!remote||typeof remote!=="object")return undefined;
  const out={...remote};
