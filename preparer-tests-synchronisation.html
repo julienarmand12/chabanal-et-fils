@@ -1,0 +1,143 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Préparer 3 clients tests — Chabanal</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>:root{font-family:system-ui,Arial,sans-serif;background:#071a31;color:#edf5ff}*{box-sizing:border-box}body{max-width:740px;margin:auto;padding:16px;line-height:1.52}h1{font-size:1.5rem}h2{font-size:1.1rem}section{background:#0b2b4b;padding:15px;border:1px solid #346088;border-radius:12px;margin:15px 0}button,a.btn{display:inline-block;background:#147cde;color:#fff;font-weight:700;font-size:1rem;border:0;border-radius:8px;padding:12px 14px;margin:5px;text-decoration:none}button:disabled{opacity:.45}select{width:100%;padding:10px;border-radius:6px;background:#122e4a;color:#fff;border:1px solid #557ca4}label{display:block;margin:14px 0}input[type=checkbox]{width:20px;height:20px;vertical-align:middle;margin-right:8px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#03162e;padding:12px;border-radius:8px}.ok{color:#93e2ac}.bad{color:#ff9f9f}.warn{color:#ffd27f}.muted{color:#bfd2e5}a{color:#a2d2ff}</style></head><body>
+<h1>Créer les 3 fiches fictives</h1><p>Ouvre cette page <strong>sur le téléphone 1, dans le même navigateur que l'application</strong>. Elle ajoutera trois fiches dans Supabase ; les deux téléphones les récupéreront ensuite automatiquement.</p>
+<section><h2>Fiches prévues</h2><p><strong>test 1 :</strong> numéros de série et mois d'entretien, échanges dans les deux sens.</p><p><strong>test 2 :</strong> suppression téléphone 1 → téléphone 2.</p><p><strong>test 3 :</strong> suppression téléphone 2 → téléphone 1.</p><p class="muted">Chaque fiche sera clairement marquée « FICHE FICTIVE ». Aucune intervention factice ne sera créée.</p></section>
+<section><h2>1. Contrôle préalable</h2><button id="check">Vérifier Supabase</button><p id="status">En attente.</p><pre id="report">—</pre><label>Équipement de test attribué à « test 1 »<select id="model" disabled></select></label></section>
+<section><h2>2. Sauvegarde</h2><button id="backup" disabled>Télécharger la sauvegarde JSON</button><label><input type="checkbox" id="saved" disabled>J'ai vérifié que la sauvegarde est présente dans Téléchargements.</label></section>
+<section><h2>3. Créer les fiches</h2><button id="create" disabled>Créer « test 1 », « test 2 » et « test 3 »</button><p id="outcome" role="status"></p></section>
+<a class="btn" href="./">Ouvrir l'application V2.5</a>
+<script>
+(()=>{"use strict";
+const CFG="chabanal_v2_cloud_config",CL="metier_clients_v1_2_corrigee",DELETED="metier_clients_deleted_v1",MODELS="metier_equipement_modeles_v1",ASSIGN="metier_equipement_attributions_v1";
+const ids=["client_sync_test_20261011_1","client_sync_test_20261011_2","client_sync_test_20261011_3"];
+const names=["test 1","test 2","test 3"];
+const $=id=>document.getElementById(id),obj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
+const normalize=x=>String(x??"").trim().toLowerCase();
+const stable=x=>Array.isArray(x)?x.map(stable):obj(x)?Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x;
+const same=(a,b)=>JSON.stringify(stable(a))===JSON.stringify(stable(b));
+const local=k=>{try{return JSON.parse(localStorage.getItem(k)||"null")}catch{return null}};
+let client=null,snapshot=null,downloaded=false,busy=false;
+function set(where,msg,style){$(where).textContent=msg;$(where).className=style||""}
+function controls(){
+ $("check").disabled=busy;
+ $("model").disabled=busy||!snapshot||snapshot.models.length===0;
+ $("backup").disabled=busy||!snapshot;
+ $("saved").disabled=busy||!snapshot||!downloaded;
+ $("create").disabled=busy||!snapshot||!downloaded||!$("saved").checked||!$("model").value;
+}
+function reset(){snapshot=null;downloaded=false;$("saved").checked=false;$("model").innerHTML="";controls()}
+function testClient(n){return {
+ id:ids[n],name:names[n],address:"",addressComplement:"",postal:"",city:"",phone:"",email:"",
+ maintenanceMonth:"",interventions:[],attachments:0,
+ notes:"FICHE FICTIVE — TEST DE SYNCHRONISATION MULTI-APPAREILS — NE PAS UTILISER POUR UNE INTERVENTION.",isNew:false
+}}
+function validateRows(rows){
+ const clients=rows[CL],models=rows[MODELS],assign=rows[ASSIGN],deleted=rows[DELETED];
+ if(!clients||!Array.isArray(clients.value_json)||!Number.isSafeInteger(Number(clients.version)))throw Error("Fiches clients Supabase indisponibles.");
+ if(!models||!Array.isArray(models.value_json))throw Error("Catalogue d'équipements Supabase indisponible.");
+ if(!assign||!obj(assign.value_json)||!Number.isSafeInteger(Number(assign.version)))throw Error("Attributions d'équipements indisponibles.");
+ if(!deleted||!Array.isArray(deleted.value_json))throw Error("Marqueurs de suppression indisponibles.");
+ const existing=clients.value_json.filter(c=>ids.includes(c.id));
+ const others=clients.value_json.filter(c=>!ids.includes(c.id));
+ if(others.length!==738)throw Error("Nombre de clients non fictifs différent de 738 : vérifier avant toute création.");
+ const count=others.reduce((n,c)=>n+(Array.isArray(c.interventions)?c.interventions.length:0),0);
+ if(count!==3673)throw Error("Nombre d'interventions différent de 3 673. Création suspendue.");
+ const otherNames=others.filter(c=>names.includes(normalize(c.name)));
+ if(otherNames.length)throw Error("Une fiche nommée test 1, test 2 ou test 3 existe déjà avec un autre identifiant.");
+ for(const c of existing){const n=ids.indexOf(c.id);if(n<0||normalize(c.name)!==names[n])throw Error("Identifiant de test déjà utilisé pour un autre client.")}
+ if(existing.length!==0&&existing.length!==3)throw Error("Création partielle déjà détectée. Aucune écriture automatique.");
+ if(ids.some(id=>deleted.value_json.includes(id)))throw Error("Au moins une fiche de test a déjà été supprimée : création interdite.");
+ const validModels=models.value_json.filter(m=>m&&typeof m.id==="string"&&["chaudiere","pac_air_air"].includes(m.type));
+ if(!validModels.length)throw Error("Aucun équipement existant à attribuer à test 1.");
+ if(existing.length===3&&Array.isArray(assign.value_json[ids[0]])&&assign.value_json[ids[0]].length)
+  throw Error("Les trois fiches et l'équipement existent déjà. Ne pas les recréer.");
+ return {existing:existing.length,count,validModels};
+}
+async function connect(){
+ const config=local(CFG);
+ if(!config?.url||!config?.key||!window.supabase)throw Error("Configuration Supabase absente : ouvrir d'abord l'application V2.5 dans ce navigateur.");
+ if(!client)client=window.supabase.createClient(config.url,config.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storage:localStorage}});
+ const auth=await client.auth.getSession();
+ if(auth.error||!auth.data?.session)throw Error("Session Supabase absente : se connecter via l'application principale.");
+}
+async function readCloud(){
+ const keys=[CL,MODELS,ASSIGN,DELETED],res=await Promise.all(keys.map(key=>client.from("app_sync_state").select("key_name,value_json,version").eq("key_name",key).maybeSingle()));
+ const rows={};
+ for(let i=0;i<keys.length;i++){if(res[i].error)throw res[i].error;rows[keys[i]]=res[i].data}
+ return rows;
+}
+async function writeCAS(key,row,value,user,reason){
+ const version=Number(row.version)+1;
+ const payload={value_json:value,version,updated_at:new Date().toISOString(),updated_by:user,change_reason:reason};
+ const {data,error}=await client.from("app_sync_state").update(payload).eq("key_name",key).eq("version",row.version).select("version");
+ if(error)throw error;
+ if(!Array.isArray(data)||data.length!==1)throw Error("Version Supabase modifiée simultanément : aucune confirmation d'enregistrement sur "+key);
+ const {data:verify,error:verifyError}=await client.from("app_sync_state").select("value_json,version").eq("key_name",key).maybeSingle();
+ if(verifyError||!verify||Number(verify.version)!==version||!same(verify.value_json,value))
+  throw Error("Écriture cloud potentiellement acceptée mais contrôle de retour ambigu : arrêter et vérifier.");
+ return verify;
+}
+$("saved").onchange=controls;$("model").onchange=controls;
+$("check").onclick=async()=>{
+ reset();busy=true;controls();set("outcome","");set("status","Vérification en cours…","warn");
+ try{
+  await connect();const rows=await readCloud(),report=validateRows(rows);
+  snapshot={rows,models:report.validModels};
+  $("model").innerHTML="";
+  for(const m of report.validModels){
+   const option=document.createElement("option");option.value=m.id;
+   option.textContent=[m.type==="chaudiere"?"Chaudière":"PAC air/air",m.brand,m.model].filter(Boolean).join(" · ");
+   $("model").appendChild(option);
+  }
+  $("report").textContent="Clients réels : 738\nInterventions : 3 673\nFiches de test déjà présentes : "+report.existing+
+   "\nVersion clients Supabase : "+rows[CL].version+
+   "\nVersion équipements attribués : "+rows[ASSIGN].version+
+   "\nTrois clients fictifs, zéro intervention supplémentaire.\nUn modèle du catalogue sera lié à test 1 uniquement.";
+  set("status","Vérification réussie. Choisir un équipement, puis télécharger la sauvegarde.","ok");
+ }catch(e){set("report","—");set("status","Arrêt de sécurité : "+(e?.message||e),"bad")}
+ finally{busy=false;controls()}
+};
+$("backup").onclick=()=>{
+ if(!snapshot||busy)return;
+ try{
+  const blob=new Blob([JSON.stringify({date:new Date().toISOString(),label:"Sauvegarde Chabanal avant creation tests",rows:snapshot.rows})],{type:"application/json"});
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download="sauvegarde_chabanal_avant_tests_2026-10-11.json";document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+  downloaded=true;controls();set("status","Sauvegarde demandée. Vérifier qu'elle est bien enregistrée.","warn");
+ }catch(e){reset();set("status","Sauvegarde impossible : "+(e?.message||e),"bad")}
+};
+$("create").onclick=async()=>{
+ if(busy||!snapshot||!downloaded||!$("saved").checked||!$("model").value)return;
+ if(!confirm("Créer exactement trois fiches fictives test 1, test 2, test 3 dans Supabase ?"))return;
+ busy=true;controls();set("outcome","Nouvelle vérification avant création…","warn");
+ try{
+  await connect();const current=await readCloud();
+  const state=validateRows(current);
+  if(state.existing!==0)throw Error("Les fiches de test sont déjà présentes. Ne pas recommencer.");
+  const chosen=$("model").value;
+  if(!state.validModels.some(m=>m.id===chosen))throw Error("Le modèle d'équipement sélectionné n'est plus disponible.");
+  for(const key of [CL,ASSIGN,MODELS,DELETED]){
+   if(current[key].version!==snapshot.rows[key].version||!same(current[key].value_json,snapshot.rows[key].value_json))
+    throw Error("Supabase a changé depuis la sauvegarde. Relancer le contrôle.");
+  }
+  const identity=await client.auth.getUser();
+  if(identity.error||!identity.data?.user?.id)throw Error("Session Supabase expirée.");
+  const created=[...current[CL].value_json,...names.map((_,i)=>testClient(i))];
+  const savedClients=await writeCAS(CL,current[CL],created,identity.data.user.id,"ajout-trois-clients-fictifs-tests-sync");
+  set("outcome","Trois fiches créées dans Supabase (version "+savedClients.version+"). Attribution de l'équipement…","warn");
+  // Read fresh assignments to avoid overwriting any concurrent edit.
+  const {data:latestAssign,error:assignError}=await client.from("app_sync_state").select("value_json,version").eq("key_name",ASSIGN).maybeSingle();
+  if(assignError||!latestAssign||!obj(latestAssign.value_json))throw Error("Fiches créées, mais équipement non attribué : vérifier la fiche test 1 dans l'application.");
+  if(!state.validModels.some(m=>m.id===chosen))throw Error("Fiches créées, équipement à attribuer manuellement.");
+  const nextAssign={...latestAssign.value_json,[ids[0]]:[chosen]};
+  const savedAssign=await writeCAS(ASSIGN,latestAssign,nextAssign,identity.data.user.id,"attribution-modele-test-1");
+  reset();
+  set("outcome","✅ Trois clients fictifs créés dans Supabase. Un équipement est attribué à « test 1 ». Version clients "+savedClients.version+", version attributions "+savedAssign.version+". Ouvre l'application sur les deux téléphones, actualise et vérifie l'apparition des fiches.","ok");
+ }catch(e){reset();set("outcome","⚠️ "+(e?.message||e)+" Ne pas relancer la création avant un nouveau contrôle : une opération a pu réussir partiellement.","bad")}
+ finally{busy=false;controls()}
+};
+controls();
+})();
+</script></body></html>
