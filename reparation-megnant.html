@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="fr"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Réparation ciblée Megnant — Chabanal et fils</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#03162e">
+<style>
+:root{font-family:system-ui,-apple-system,Arial,sans-serif;color:#e8f2ff;background:#03162e}
+*{box-sizing:border-box}body{max-width:730px;margin:0 auto;padding:18px 16px 36px;line-height:1.55}
+h1{font-size:1.45rem}h2{font-size:1.1rem;margin:0 0 12px}p{margin:9px 0}
+.panel{background:#0a2747;border:1px solid #28547a;border-radius:14px;padding:16px;margin:14px 0}
+.note{color:#bbd3ec;font-size:.93rem}.good{color:#91edaa}.warn{color:#ffce73}.bad{color:#ff9c9c}
+button,.link{display:inline-block;background:#147adb;color:#fff;border:0;border-radius:9px;padding:11px 15px;margin:5px 5px 5px 0;font-size:1rem;font-weight:700;text-decoration:none;cursor:pointer}
+button:disabled{opacity:.47;cursor:not-allowed}.danger{background:#1a764c}
+#details{white-space:pre-wrap;overflow-wrap:anywhere;font-family:ui-monospace,monospace;font-size:.85rem}
+label{display:flex;align-items:start;gap:10px;margin:12px 0}input[type=checkbox]{width:20px;height:20px;flex-shrink:0}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head><body>
+<h1>Récupération de l'intervention Megnant</h1>
+<p class="note">Opération ciblée en trois étapes : vérification, sauvegarde, puis insertion d'une intervention dans Supabase. Le fichier principal de l'application n'est pas modifié.</p>
+<div class="panel"><h2>1. Vérification — téléphone 2 seulement</h2>
+<p>Ouvrez cette page sur le <strong>téléphone qui affiche 3 673 interventions</strong>, dans le même navigateur que l'application.</p>
+<button id="check">Vérifier les données</button>
+<div id="status" role="status">Aucune action effectuée.</div>
+<div id="details"></div></div>
+<div class="panel"><h2>2. Sauvegarde obligatoire</h2>
+<button id="backup" disabled>Télécharger la sauvegarde</button>
+<label><input type="checkbox" id="confirmed" disabled> J'ai vérifié que la sauvegarde JSON est présente dans les téléchargements de ce téléphone.</label></div>
+<div class="panel"><h2>3. Réparation ciblée</h2>
+<p>Ajoute <strong>une seule intervention</strong> à la fiche Megnant dans Supabase, sans remplacer les autres clients ou leurs interventions.</p>
+<button class="danger" id="merge" disabled>Récupérer l'intervention Megnant</button>
+<p id="result" role="status"></p></div>
+<p class="note">Ne supprimez pas les données du téléphone 2. En cas de refus de la vérification, aucune écriture n'est effectuée. La réparation est conçue pour éviter les doublons et les modifications concurrentes.</p>
+<p><a class="link" href="./diagnostic-sync.html">Diagnostic</a><a class="link" href="./">Application principale</a></p>
+<script>
+(()=>{
+"use strict";
+const CLIENT="metier_clients_v1_2_corrigee",DEL="metier_clients_deleted_v1",CFG="chabanal_v2_cloud_config";
+const $=id=>document.getElementById(id),read=k=>{try{return JSON.parse(localStorage.getItem(k)||"null")}catch{return null}};
+const a=x=>Array.isArray(x)?x:[],norm=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+const stable=x=>Array.isArray(x)?x.map(stable):x&&typeof x==="object"?Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x;
+const sig=x=>JSON.stringify(stable(x));
+const nInter=xs=>xs.reduce((n,c)=>n+a(c.interventions).length,0);
+const visible=(xs,deleted)=>a(xs).filter(c=>c&&c.id!=null&&!new Set(a(deleted)).has(c.id));
+let preview=null,client=null,accepted=false,running=false;
+function status(msg,kind){$("status").className=kind||"";$("status").textContent=msg}
+function result(msg,kind){$("result").className=kind||"";$("result").textContent=msg}
+function lock(){const ok=!!preview&&!running;$("check").disabled=running;$("backup").disabled=!ok;$("confirmed").disabled=!ok;$("merge").disabled=!ok||!accepted;}
+function invalidate(){preview=null;accepted=false;$("confirmed").checked=false;lock()}
+function mapById(xs){const m=new Map();for(const c of xs){const k=String(c.id);if(m.has(k))throw Error("ID client répété : analyse arrêtée.");m.set(k,c)}return m}
+function counts(xs){const m=new Map();for(const x of a(xs)){const k=sig(x);m.set(k,(m.get(k)||0)+1)}return m}
+function compareInterventions(local,remote){
+ const cloud=counts(remote),missing=[];
+ for(const intervention of a(local)){
+  const k=sig(intervention),remaining=cloud.get(k)||0;
+  if(remaining>0)cloud.set(k,remaining-1);
+  else missing.push(intervention);
+ }
+ return {missing,extraCloud:[...cloud.values()].reduce((sum,n)=>sum+n,0)};
+}
+function examine(loc,locD,rem,remD){
+ if(!Array.isArray(loc)||!Array.isArray(rem))throw Error("Liste de clients absente ou invalide.");
+ const l=visible(loc,locD),r=visible(rem,remD),lm=mapById(l),rm=mapById(r);
+ if(l.length!==r.length||lm.size!==rm.size||[...lm.keys()].some(id=>!rm.has(id)))throw Error("Liste des clients divergente : aucune fusion automatique autorisée.");
+ let target=null;
+ for(const [id,lc] of lm){
+  const rc=rm.get(id),c=compareInterventions(lc.interventions,rc.interventions);
+  if(c.missing.length===0&&c.extraCloud===0)continue;
+  const targetName=norm(lc.name).includes("megnant")&&norm(rc.name).includes("megnant");
+  if(!targetName||c.missing.length!==1||c.extraCloud!==0||target)throw Error("Divergence supplémentaire ou ambiguë détectée : écriture refusée.");
+  target={id,name:lc.name,intervention:c.missing[0],cloudCount:a(rc.interventions).length};
+ }
+ if(!target)throw Error("Aucune intervention Megnant manquante : rien à ajouter (elle est peut-être déjà synchronisée).");
+ const matching=[...lm.values()].filter(c=>norm(c.name).includes("megnant"));
+ if(matching.length!==1||norm(rm.get(target.id).name)!==norm(target.name))throw Error("Identification Megnant ambiguë : écriture refusée.");
+ return {target,lCount:l.length,rCount:r.length,lTotal:nInter(l),rTotal:nInter(r)};
+}
+async function sessionClient(){
+ const c=read(CFG);
+ if(!c||!c.url||!c.key)throw Error("Configuration Supabase absente. Ouvrez le diagnostic depuis le même navigateur que l'application.");
+ if(!window.supabase)throw Error("Impossible de charger la bibliothèque Supabase.");
+ const s=window.supabase.createClient(c.url,c.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storage:localStorage}});
+ const {data,error}=await s.auth.getSession();if(error)throw error;
+ if(!data?.session)throw Error("Session Supabase absente. Connectez-vous d'abord dans l'application.");
+ return s;
+}
+async function remote(){
+ const [clients,deleted]=await Promise.all([
+  client.from("app_sync_state").select("key_name,value_json,version").eq("key_name",CLIENT).maybeSingle(),
+  client.from("app_sync_state").select("key_name,value_json,version").eq("key_name",DEL).maybeSingle()
+ ]);
+ if(clients.error)throw clients.error;if(deleted.error)throw deleted.error;
+ if(!clients.data||!Array.isArray(clients.data.value_json))throw Error("Données cloud introuvables ou invalides.");
+ if(!Number.isInteger(Number(clients.data.version))||Number(clients.data.version)<1)throw Error("Version cloud invalide.");
+ return {clients:clients.data,deleted:deleted.data};
+}
+$("confirmed").addEventListener("change",()=>{accepted=$("confirmed").checked;lock()});
+$("check").onclick=async()=>{
+ invalidate();running=true;lock();status("Vérification locale et Supabase en cours…");result("");
+ try{
+  client=await sessionClient();
+  const local=read(CLIENT),deleted=read(DEL),server=await remote();
+  const checked=examine(local,deleted,server.clients.value_json,server.deleted?.value_json);
+  preview={local,deleted,server,checked,
+   localSig:sig(local),deletedSig:sig(deleted),
+   remoteSig:sig(server.clients.value_json),remoteDeletedSig:sig(server.deleted?.value_json)};
+  const i=checked.target.intervention;
+  $("details").textContent=[
+   "Clients locaux et cloud : "+checked.lCount+" / "+checked.rCount,
+   "Interventions locales et cloud : "+checked.lTotal+" / "+checked.rTotal,
+   "Version cloud : "+server.clients.version,
+   "Fiche : "+checked.target.name,
+   "Date : "+String(i.date||i.iso||"(sans date)"),
+   "Description : "+String(i.description||"(aucune)"),
+   "Interventions déjà en cloud pour Megnant : "+checked.target.cloudCount,
+   "Intervention à ajouter : 1"
+  ].join("\n");
+  status("Intervention retrouvée. Vérification réussie ; aucune modification effectuée.","good");
+ }catch(e){$("details").textContent="";status("Arrêt : "+(e?.message||e),"bad")}
+ finally{running=false;lock()}
+};
+$("backup").onclick=()=>{
+ if(!preview||running)return;
+ try{
+  const backup={
+   label:"Sauvegarde avant réparation Megnant (sans identifiants Supabase)",
+   createdAt:new Date().toISOString(),
+   local:{clients:preview.local,deletedClientIds:preview.deleted},
+   cloud:{clients:preview.server.clients.value_json,deletedClientIds:preview.server.deleted?.value_json,version:preview.server.clients.version},
+   candidate:preview.checked.target
+  };
+  const blob=new Blob([JSON.stringify(backup)],{type:"application/json"});
+  const url=URL.createObjectURL(blob),link=document.createElement("a");
+  link.href=url;link.download="sauvegarde_chabanal_megnant_"+new Date().toISOString().slice(0,10)+".json";
+  document.body.append(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+  status("Téléchargement demandé. Vérifiez le fichier dans Téléchargements avant de cocher la case.","warn");
+ }catch(e){status("Sauvegarde impossible : "+(e?.message||e),"bad");invalidate()}
+};
+$("merge").onclick=async()=>{
+ if(!preview||!accepted||running)return;
+ if(!confirm("Confirmez-vous l'ajout de l'intervention manquante de Megnant dans Supabase ? Les autres fiches ne seront pas remplacées."))return;
+ running=true;lock();result("Nouvelle vérification avant écriture…");
+ try{
+  const lNow=read(CLIENT),dNow=read(DEL);
+  if(sig(lNow)!==preview.localSig||sig(dNow)!==preview.deletedSig)throw Error("Les données locales ont changé depuis l'analyse : recommencez la vérification.");
+  const fresh=await remote();
+  if(Number(fresh.clients.version)!==Number(preview.server.clients.version)||
+     sig(fresh.clients.value_json)!==preview.remoteSig||
+     sig(fresh.deleted?.value_json)!==preview.remoteDeletedSig)throw Error("Supabase a changé depuis le contrôle : aucune écriture. Relancez la vérification.");
+  const checked=examine(lNow,dNow,fresh.clients.value_json,fresh.deleted?.value_json);
+  if(checked.target.id!==preview.checked.target.id||
+     sig(checked.target.intervention)!==sig(preview.checked.target.intervention))throw Error("L'intervention candidate n'est plus identique : aucune écriture.");
+  const next=fresh.clients.value_json.map(c=>{
+   if(String(c.id)!==String(checked.target.id))return c;
+   return {...c,interventions:[...a(c.interventions),checked.target.intervention]};
+  });
+  const newVersion=Number(fresh.clients.version)+1;
+  result("Insertion contrôlée dans Supabase…","warn");
+  const auth=await client.auth.getUser();
+  if(auth.error||!auth.data.user)throw Error("Session Supabase non valide pour l'écriture.");
+  const {data,error}=await client.from("app_sync_state").update({
+   value_json:next,version:newVersion,updated_at:new Date().toISOString(),
+   updated_by:auth.data.user.id,change_reason:"reparation-megnant-ajout-unique-2026-10-11"
+  }).eq("key_name",CLIENT).eq("version",fresh.clients.version).select("version");
+  if(error)throw error;
+  if(!Array.isArray(data)||data.length!==1)throw Error("Écriture non confirmée (mise à jour concurrente possible). Ne réessayez pas avant un nouveau diagnostic.");
+  const readback=await remote();
+  if(Number(readback.clients.version)<newVersion)throw Error("Écriture acceptée, mais lecture de contrôle incohérente.");
+  const after=compareInterventions(
+   a(lNow).find(c=>String(c.id)===String(checked.target.id))?.interventions,
+   a(readback.clients.value_json).find(c=>String(c.id)===String(checked.target.id))?.interventions
+  );
+  const valid=after.missing.length===0&&after.extraCloud===0;
+  try{
+   const history=await client.from("app_sync_history").insert({
+    key_name:CLIENT,version:newVersion,value_json:next,
+    change_reason:"reparation-megnant-ajout-unique-2026-10-11",updated_by:auth.data.user.id
+   });
+   if(history.error)console.warn("Historique Supabase :",history.error.message);
+  }catch(e){console.warn("Historique Supabase :",e)}
+  if(!valid)throw Error("L'intervention a été transmise mais le contrôle final est ambigu. Ne relancez pas l'ajout ; faites un nouveau diagnostic.");
+  result("✅ Réparation effectuée dans Supabase : Megnant a désormais son intervention. Version enregistrée : "+newVersion+". Revenir à l'application sur les deux téléphones, les recharger, puis refaire le diagnostic.","good");
+  status("Intervention envoyée et relue. L'application principale et la copie locale du téléphone 2 n'ont pas été écrasées.","good");
+  invalidate();
+ }catch(e){
+  result("⚠️ "+(e?.message||e)+" Vérifiez les compteurs avant toute nouvelle tentative.","bad");
+  invalidate();
+ }finally{running=false;lock()}
+};
+lock();
+})();
+</script></body></html>
