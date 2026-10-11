@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Finaliser les numéros de série — Chabanal</title><meta name="robots" content="noindex,nofollow">
+<style>
+:root{font-family:system-ui,Arial,sans-serif;color:#eaf2ff;background:#03162e}*{box-sizing:border-box}
+body{max-width:740px;margin:auto;padding:16px 14px 40px;line-height:1.52}
+h1{font-size:1.43rem}h2{font-size:1.1rem;margin:0 0 12px}
+section{background:#092847;border:1px solid #315e87;border-radius:13px;padding:16px;margin:15px 0}
+button,a.btn{display:inline-block;border:0;border-radius:9px;color:#fff;background:#1179df;padding:12px 15px;font-size:1rem;font-weight:650;margin:4px;text-decoration:none}
+button:disabled{opacity:.4}
+#apply{background:#13815f}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.9rem;background:#041b35;padding:12px;border-radius:9px}
+small,.muted{color:#bdcee3}.ok{color:#8ae9aa}.warn{color:#ffd481}.bad{color:#ff9f9f}
+label{display:flex;align-items:start;gap:10px;margin:14px 0}
+input[type=checkbox]{width:21px;height:21px;flex-shrink:0}
+</style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script></head><body>
+<h1>Dernière étape : numéros de série</h1>
+<p>Ouvre cet outil sur chaque téléphone, dans Chrome. Il vérifie les numéros, crée une sauvegarde puis aligne uniquement la copie locale sur Supabase. <strong>Il n'écrit jamais dans Supabase.</strong></p>
+<section><h2>1. Vérification</h2><button id="scan">Vérifier cet appareil</button><p id="status">Aucune modification.</p><pre id="report">—</pre></section>
+<section><h2>2. Sauvegarde obligatoire</h2>
+<button id="download" disabled>Télécharger la sauvegarde JSON</button>
+<label><input id="confirmed" type="checkbox" disabled>J'ai vérifié la présence du fichier JSON dans les téléchargements de cet appareil.</label></section>
+<section><h2>3. Finaliser ce téléphone</h2>
+<button id="apply" disabled>Aligner les numéros sur Supabase</button>
+<p id="outcome" role="status"></p></section>
+<p class="muted">Pour éviter les modifications simultanées, ferme l'application principale avant cette opération. N'efface pas les données du navigateur et n'utilise pas de navigation privée.</p>
+<a class="btn" href="./audit-numeros-serie.html?v=2">Audit numéros</a>
+<a class="btn" href="./diagnostic-sync.html">Diagnostic clients</a>
+<script>
+(()=>{
+"use strict";
+const SERIAL="metier_equipement_numeros_serie_v1",CLIENTS="metier_clients_v1_2_corrigee",
+ CFG="chabanal_v2_cloud_config",META="chabanal_v2_cloud_meta",QUEUE="chabanal_v2_sync_queue";
+const $=id=>document.getElementById(id);
+const get=key=>{try{return JSON.parse(localStorage.getItem(key)||"null")}catch{return null}};
+const object=v=>v!==null&&typeof v==="object"&&!Array.isArray(v);
+const text=v=>v==null?"":String(v).trim();
+const norm=v=>text(v).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+const stable=v=>Array.isArray(v)?v.map(stable):object(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,stable(v[k])])):v;
+const signature=v=>JSON.stringify(stable(v));
+const own=(v,k)=>Object.prototype.hasOwnProperty.call(v,k);
+let capture=null,client=null,busy=false,backupRequested=false;
+function ui(){
+ const ready=!!capture&&!busy;
+ $("scan").disabled=busy;$("download").disabled=!ready;
+ $("confirmed").disabled=!ready||!backupRequested;
+ $("apply").disabled=!ready||!backupRequested||!$("confirmed").checked;
+}
+function clearState(){capture=null;backupRequested=false;$("confirmed").checked=false;ui()}
+function status(where,message,style){$(where).textContent=message;$(where).className=style||""}
+function differences(local,remote,clients){
+ if(!object(local)||!object(remote)||!Array.isArray(clients))throw Error("Données de numéros de série ou de clients invalides.");
+ const names=new Map(clients.filter(c=>c&&c.id!=null).map(c=>[String(c.id),norm(c.name)]));
+ const diffs=[];
+ for(const id of new Set([...Object.keys(local),...Object.keys(remote)])){
+  const a=object(local[id])?local[id]:{},b=object(remote[id])?remote[id]:{};
+  for(const model of new Set([...Object.keys(a),...Object.keys(b)])){
+   const l=text(a[model]),r=text(b[model]);
+   if(l!==r)diffs.push({id,model,l,r,name:names.get(id)||""});
+  }
+ }
+ const zero=diffs.length===0;
+ const one=diffs.length===1&&diffs[0].name==="angleviel"&&!diffs[0].l&&!!diffs[0].r;
+ if(!zero&&!one)throw Error("Différences inattendues : aucune écriture locale autorisée.");
+ return {case:zero?"identical":"angleviel-absent",differences:diffs};
+}
+async function remote(){
+ const config=get(CFG);
+ if(!config?.url||!config?.key||!window.supabase)throw Error("Configuration Supabase absente ou bibliothèque inaccessible.");
+ if(!client)client=window.supabase.createClient(config.url,config.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storage:localStorage}});
+ const {data:session,error:sessionError}=await client.auth.getSession();
+ if(sessionError)throw sessionError;if(!session?.session)throw Error("Connecte-toi dans l'application principale, puis reviens ici.");
+ const [s,c]=await Promise.all([
+  client.from("app_sync_state").select("value_json,version").eq("key_name",SERIAL).maybeSingle(),
+  client.from("app_sync_state").select("value_json,version").eq("key_name",CLIENTS).maybeSingle()
+ ]);
+ if(s.error)throw s.error;if(c.error)throw c.error;
+ if(!s.data||!object(s.data.value_json)||!Number.isSafeInteger(Number(s.data.version))||
+    !c.data||!Array.isArray(c.data.value_json))throw Error("Supabase a renvoyé des données invalides.");
+ return {serial:s.data,clients:c.data};
+}
+$("confirmed").onchange=ui;
+$("scan").onclick=async()=>{
+ clearState();busy=true;ui();status("outcome","");status("status","Analyse des numéros…","warn");
+ try{
+  const local=get(SERIAL),meta=get(META)||{},queue=get(QUEUE)||{};
+  const cloud=await remote(),analysis=differences(local,cloud.serial.value_json,cloud.clients.value_json);
+  const localVersion=Number(meta[SERIAL]||0),cloudVersion=Number(cloud.serial.version);
+  if(cloudVersion<1)throw Error("Version Supabase invalide.");
+  // Only expected versions are allowed for this targeted reconciliation.
+  if(analysis.case==="identical"&&localVersion!==20&&localVersion!==21&&localVersion!==cloudVersion)
+   throw Error("Version locale inattendue. Aucune réparation.");
+  if(analysis.case==="angleviel-absent"&&localVersion!==21)
+   throw Error("État du téléphone avec Angleviel manquant inattendu.");
+  capture={local,cloud,analysis,metaSig:signature(meta),queueSig:signature(queue),
+   localSig:signature(local),cloudSig:signature(cloud.serial.value_json)};
+  const pending=own(queue,SERIAL);
+  $("report").textContent=[
+   "Numéros différents : "+analysis.differences.length,
+   "Détail : "+(analysis.case==="identical"?"Tous les numéros sont déjà identiques":"Seul Angleviel manque sur ce téléphone"),
+   "Version locale connue : "+localVersion,
+   "Version cloud : "+cloudVersion,
+   "Numéros en attente : "+(pending?"oui":"non"),
+   "Action prévue : récupérer la copie Supabase et enregistrer localement la version "+cloudVersion,
+   "Aucune modification de la base cloud."
+  ].join("\n");
+  status("status","Situation reconnue. Vérification réussie, aucune donnée modifiée.","ok");
+ }catch(e){$("report").textContent="—";status("status","Arrêt : "+(e?.message||e),"bad")}
+ finally{busy=false;ui()}
+};
+$("download").onclick=()=>{
+ if(!capture||busy)return;
+ try{
+  const backup={label:"Sauvegarde Chabanal avant finalisation des numeros",
+   createdAt:new Date().toISOString(),
+   local:{serialNumbers:capture.local,meta:get(META),queue:get(QUEUE)},
+   cloud:{serialNumbers:capture.cloud.serial.value_json,version:capture.cloud.serial.version}};
+  const blob=new Blob([JSON.stringify(backup)],{type:"application/json"});
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download="sauvegarde_chabanal_series_final_"+new Date().toISOString().slice(0,10)+".json";
+  document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+  backupRequested=true;ui();status("status","Téléchargement déclenché. Vérifie le fichier JSON avant de confirmer.","warn");
+ }catch(e){clearState();status("status","Sauvegarde impossible : "+(e?.message||e),"bad")}
+};
+$("apply").onclick=async()=>{
+ if(!capture||busy||!backupRequested||!$("confirmed").checked)return;
+ if(!confirm("Mettre à jour uniquement les numéros de série et la version locale à partir de Supabase ?"))return;
+ busy=true;ui();status("outcome","Nouvelle vérification…","warn");
+ try{
+  if(signature(get(SERIAL))!==capture.localSig||
+     signature(get(META)||{})!==capture.metaSig||
+     signature(get(QUEUE)||{})!==capture.queueSig)
+   throw Error("Une modification locale est survenue. Relancer le contrôle.");
+  const fresh=await remote();
+  if(Number(fresh.serial.version)!==Number(capture.cloud.serial.version)||
+     signature(fresh.serial.value_json)!==capture.cloudSig)
+   throw Error("Supabase a changé depuis l'analyse. Relancer le contrôle.");
+  const verifiedCase=differences(get(SERIAL),fresh.serial.value_json,fresh.clients.value_json);
+  if(verifiedCase.case!==capture.analysis.case)throw Error("La comparaison a changé.");
+  const nextMeta={...(get(META)||{}),[SERIAL]:Number(fresh.serial.version)};
+  const nextQueue={...(get(QUEUE)||{})};delete nextQueue[SERIAL];
+  const originals=[[SERIAL,localStorage.getItem(SERIAL)],[META,localStorage.getItem(META)],[QUEUE,localStorage.getItem(QUEUE)]];
+  try{
+   localStorage.setItem(SERIAL,JSON.stringify(fresh.serial.value_json));
+   localStorage.setItem(META,JSON.stringify(nextMeta));
+   localStorage.setItem(QUEUE,JSON.stringify(nextQueue));
+   if(signature(get(SERIAL))!==signature(fresh.serial.value_json)||
+      Number((get(META)||{})[SERIAL])!==Number(fresh.serial.version)||
+      own(get(QUEUE)||{},SERIAL))
+    throw Error("Contrôle d'écriture locale non validé.");
+  }catch(e){
+   for(const [key,old] of originals){
+    try{if(old===null)localStorage.removeItem(key);else localStorage.setItem(key,old)}catch(err){console.error(err)}
+   }
+   throw Error("Modification locale incomplète : "+(e?.message||e));
+  }
+  clearState();
+  status("outcome","✅ Numéros synchronisés sur cet appareil : version "+fresh.serial.version+
+   ", aucune différence et aucune modification de numéros en attente. Supabase n'a pas été modifié. Ouvre maintenant l'application principale, actualise, puis refais l'audit.","ok");
+ }catch(e){clearState();status("outcome","⚠️ "+(e?.message||e)+" Ne pas réessayer avant une nouvelle vérification.","bad")}
+ finally{busy=false;ui()}
+};
+ui();
+})();
+</script></body></html>
