@@ -1,0 +1,89 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Angleviel — synchronisation ciblée</title><meta name="robots" content="noindex"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><style>body{font-family:system-ui;background:#03162e;color:#eaf2ff;max-width:720px;margin:auto;padding:20px;line-height:1.5}section{background:#092847;border:1px solid #356080;border-radius:12px;padding:16px;margin:14px 0}button{background:#1479dc;color:white;padding:12px;border:0;border-radius:8px;font-size:1rem;margin:5px}button:disabled{opacity:.5}pre{white-space:pre-wrap;overflow-wrap:anywhere}label{display:block;margin:12px 0}input{transform:scale(1.3);margin:8px}</style></head><body><h2>Synchronisation du numéro Angleviel</h2><p>Sur le téléphone 1 uniquement. Aucun autre numéro ni aucune fiche client ne sera modifié. Vérifier, sauvegarder, puis confirmer.</p><section><button id="inspect">Vérifier Angleviel</button><pre id="summary">En attente.</pre></section><section><button id="save" disabled>Télécharger la sauvegarde JSON</button><label><input id="validated" type="checkbox" disabled>J'ai vérifié le numéro Angleviel affiché et il est correct.</label><label><input id="backed" type="checkbox" disabled>La sauvegarde est bien dans mes téléchargements.</label></section><section><button id="commit" disabled>Ajouter le numéro Angleviel dans Supabase</button><p id="result"></p></section><p>Après confirmation, rouvrir l'application puis refaire l'audit des deux téléphones. Ne pas effacer les données locales.</p><a style="color:#9fd2ff" href="./audit-numeros-serie.html">Audit numéros de série</a><script>
+(()=>{"use strict";
+const SERIAL="metier_equipement_numeros_serie_v1",CLIENT="metier_clients_v1_2_corrigee",CFG="chabanal_v2_cloud_config";
+const $=s=>document.getElementById(s),parse=k=>{try{return JSON.parse(localStorage.getItem(k)||"null")}catch{return null}};
+const object=x=>!!x&&typeof x==="object"&&!Array.isArray(x),val=x=>String(x??"").trim();
+const stable=x=>Array.isArray(x)?x.map(stable):object(x)?Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x;
+const equal=(a,b)=>JSON.stringify(stable(a))===JSON.stringify(stable(b));
+let sb,previous=null,downloaded=false,working=false;
+function controls(){$("inspect").disabled=working;$("save").disabled=working||!previous;$("validated").disabled=working||!previous;$("backed").disabled=working||!previous||!downloaded;$("commit").disabled=working||!previous||!downloaded||!$("validated").checked||!$("backed").checked}
+function reset(){previous=null;downloaded=false;$("validated").checked=false;$("backed").checked=false;controls()}
+function analyze(local,remote,people){
+ if(!object(local)||!object(remote)||!Array.isArray(people))throw Error("Structure de données invalide");
+ const names=new Map(people.filter(x=>x?.id!=null).map(x=>[String(x.id),val(x.name).toLowerCase()]));
+ const diffs=[];
+ for(const id of new Set([...Object.keys(local),...Object.keys(remote)])){
+  const l=object(local[id])?local[id]:{},r=object(remote[id])?remote[id]:{};
+  for(const model of new Set([...Object.keys(l),...Object.keys(r)])){
+   if(val(l[model])!==val(r[model]))diffs.push({id,model,local:val(l[model]),cloud:val(r[model]),name:names.get(id)||""});
+  }
+ }
+ if(diffs.length!==1||diffs[0].name!=="angleviel"||!diffs[0].local||diffs[0].cloud)
+  throw Error("Le seul écart n'est plus le numéro d'Angleviel : aucune écriture");
+ return diffs[0];
+}
+async function cloud(){
+ const config=parse(CFG);
+ if(!config?.url||!config?.key||!window.supabase)throw Error("Supabase n'est pas configuré");
+ if(!sb)sb=window.supabase.createClient(config.url,config.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storage:localStorage}});
+ const {data,error}=await sb.auth.getSession();if(error)throw error;if(!data?.session)throw Error("Veuillez vous reconnecter à Supabase dans l'application");
+ const [a,b]=await Promise.all([
+  sb.from("app_sync_state").select("value_json,version").eq("key_name",SERIAL).maybeSingle(),
+  sb.from("app_sync_state").select("value_json,version").eq("key_name",CLIENT).maybeSingle()]);
+ if(a.error)throw a.error;if(b.error)throw b.error;
+ if(!a.data||!object(a.data.value_json)||!b.data||!Array.isArray(b.data.value_json)||!Number.isSafeInteger(Number(a.data.version)))throw Error("Copie Supabase invalide");
+ return {serial:a.data,clients:b.data};
+}
+$("validated").onchange=controls;$("backed").onchange=controls;
+$("inspect").onclick=async()=>{
+ reset();working=true;controls();$("summary").textContent="Vérification en cours…";$("result").textContent="";
+ try{
+  const local=parse(SERIAL),remote=await cloud(),difference=analyze(local,remote.serial.value_json,remote.clients.value_json);
+  previous={local,remote,difference};
+  $("summary").textContent="Client : Angleviel\nÉquipement : "+difference.model+"\nNuméro local à conserver : "+difference.local+
+   "\nSupabase : absent\nVersion cloud : "+remote.serial.version;
+ }catch(e){$("summary").textContent="Arrêt de sécurité : "+(e.message||e)}
+ finally{working=false;controls()}
+};
+$("save").onclick=()=>{
+ if(!previous)return;
+ try{
+  const data={date:new Date().toISOString(),local:previous.local,cloud:previous.remote.serial.value_json,version:previous.remote.serial.version};
+  const blob=new Blob([JSON.stringify(data)],{type:"application/json"}),url=URL.createObjectURL(blob);
+  const a=document.createElement("a");a.href=url;a.download="sauvegarde_angleviel_"+new Date().toISOString().slice(0,10)+".json";
+  document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+  downloaded=true;controls();
+ }catch(e){$("result").textContent="Sauvegarde impossible : "+e.message}
+};
+$("commit").onclick=async()=>{
+ if(!previous||!downloaded||!$("validated").checked||!$("backed").checked||working)return;
+ if(!confirm("Confirmer l'ajout d'un seul numéro de série Angleviel dans Supabase ?"))return;
+ working=true;controls();
+ try{
+  if(!equal(parse(SERIAL),previous.local))throw Error("La copie locale a changé. Refaire le contrôle.");
+  const now=await cloud(),before=previous.remote.serial;
+  if(Number(now.serial.version)!==Number(before.version)||!equal(now.serial.value_json,before.value_json))
+   throw Error("Supabase a changé. Refaire le contrôle.");
+  const d=analyze(parse(SERIAL),now.serial.value_json,now.clients.value_json);
+  const merged=JSON.parse(JSON.stringify(now.serial.value_json));
+  if(!object(merged[d.id]))merged[d.id]={};
+  merged[d.id][d.model]=d.local;
+  const {data:user,error:authError}=await sb.auth.getUser();
+  if(authError||!user?.user?.id)throw Error("Session d'écriture invalide.");
+  const version=Number(now.serial.version)+1;
+  const {data,error}=await sb.from("app_sync_state").update({
+   value_json:merged,version,updated_at:new Date().toISOString(),
+   updated_by:user.user.id,change_reason:"ajout-numero-angleviel-controle"
+  }).eq("key_name",SERIAL).eq("version",now.serial.version).select("version");
+  if(error)throw error;if(!Array.isArray(data)||data.length!==1)
+   throw Error("Envoi non confirmé. Faire un audit avant de réessayer.");
+  const checked=await cloud();
+  if(!equal(checked.serial.value_json,merged))throw Error("Écriture acceptée, vérification finale ambiguë. Ne pas relancer.");
+  $("result").textContent="✅ Numéro Angleviel enregistré dans Supabase (version "+version+"). Fermer cette page, rouvrir l'application et relancer l'audit.";
+  reset();
+ }catch(e){$("result").textContent="⚠️ "+(e.message||e)+" Ne pas réessayer sans nouveau diagnostic.";reset()}
+ finally{working=false;controls()}
+};
+controls();
+})();
+</script></body></html>
