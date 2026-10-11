@@ -1,4 +1,4 @@
-const CACHE='chabanal-v2-5';
+const CACHE='chabanal-v2-6';
 const SHELL=['./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(Promise.all([caches.keys().then(names=>Promise.all(names.filter(name=>name.startsWith('chabanal-v2-')&&name!==CACHE).map(name=>caches.delete(name)))),self.clients.claim()])));
