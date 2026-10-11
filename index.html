@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Chabanal et fils — v2.2</title>
+<title>Chabanal et fils — v2.4</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <meta name="theme-color" content="#03162e">
 <link rel="apple-touch-icon" href="./icon-192.png">
@@ -68,7 +68,7 @@ h1,h2,h3,p{margin-top:0}.grid{display:grid;grid-template-columns:repeat(auto-fit
   </div>
 </div>
 
-<footer class="wrap" style="padding-top:8px;padding-bottom:24px"><div class="muted small">Chabanal et fils · Application métier V2 — base de données en ligne · 738 clients</div></footer>
+<footer class="wrap" style="padding-top:8px;padding-bottom:24px"><div class="muted small">Chabanal et fils · Application métier V2.4 — base de données en ligne · 738 clients</div></footer>
 <script>
 const AUTH_PASSWORD="1909";
 const AUTH_KEY="chabanal_auth_session_v1";
@@ -118,8 +118,12 @@ function mergeImportedClients(existing, imported){
   return merged;
 }
 const storedVersion=localStorage.getItem("metier_clients_data_version");
-if(!Array.isArray(clients)){clients=seed;}else if(storedVersion!==CLIENT_DATA_VERSION || clients.length<seed.length){clients=mergeImportedClients(clients,seed);}
-clients=clients.map(c=>({...c,email:c.email||"",maintenanceMonth:(Number(c.maintenanceMonth)>=1&&Number(c.maintenanceMonth)<=12?String(Number(c.maintenanceMonth)):""),interventions:Array.isArray(c.interventions)?c.interventions:[]}));
+if(!Array.isArray(clients))clients=seed;
+// Ne jamais réimporter automatiquement le jeu initial : cela ressuscitait les fiches supprimées
+// et pouvait restaurer des interventions obsolètes à chaque ouverture.
+let deletedAtStartup=[];try{const ids=JSON.parse(localStorage.getItem(DELETED_CLIENTS_KEY)||"[]");if(Array.isArray(ids))deletedAtStartup=ids}catch(e){}
+const deletedAtStartupSet=new Set(deletedAtStartup);
+clients=clients.filter(c=>c&&!deletedAtStartupSet.has(c.id)).map(c=>({...c,email:c.email||"",maintenanceMonth:(Number(c.maintenanceMonth)>=1&&Number(c.maintenanceMonth)<=12?String(Number(c.maintenanceMonth)):""),interventions:Array.isArray(c.interventions)?c.interventions:[]}));
 localStorage.setItem("metier_clients_data_version",CLIENT_DATA_VERSION);
 let current=null;
 function saveAll(){localStorage.setItem(key,JSON.stringify(clients))}
@@ -283,7 +287,7 @@ function deleteDiagnosticCodeDocument(id,index,docIndex){const d=diagnosticBrand
 function addDiagnosticDocuments(id){const d=diagnosticBrands.find(x=>x.id===id);if(!d)return;const input=document.createElement("input");input.type="file";input.accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,.txt";input.multiple=true;input.onchange=async()=>{try{const docs=await Promise.all(Array.from(input.files||[]).map(fileToDataURL));d.documents=(d.documents||[]).concat(docs);if(saveDiagnostics())renderDiagnosticBrand()}catch(e){alert("Impossible de lire un document.")}};input.click()}
 function deleteDiagnosticDocument(id,index){const d=diagnosticBrands.find(x=>x.id===id);if(!d)return;if(!confirm("Supprimer ce document ?"))return;d.documents=(d.documents||[]).filter((_,i)=>i!==index);if(saveDiagnostics())renderDiagnosticBrand()}
 
-function goHome(){document.getElementById("client").classList.add("hidden");document.getElementById("equipment").classList.add("hidden");document.getElementById("diagnostic").classList.add("hidden");document.getElementById("home").classList.remove("hidden");search()}
+function goHome(){document.getElementById("client").classList.add("hidden");document.getElementById("equipment").classList.add("hidden");document.getElementById("diagnostic").classList.add("hidden");document.getElementById("home").classList.remove("hidden");if(window.refreshMetierFromCloud)window.refreshMetierFromCloud();search()}
 loadEquipmentCatalog();loadDiagnostics();renderDiagnosticMenu();document.getElementById("search").addEventListener("input",search);document.getElementById("clientSort").addEventListener("change",search);search();
 </script>
 <!-- V2 CLOUD SYNC ENGINE
@@ -300,7 +304,7 @@ loadEquipmentCatalog();loadDiagnostics();renderDiagnosticMenu();document.getElem
 <div id="cloudModal" class="hidden">
   <div class="cloud-card">
     <div class="row" style="justify-content:space-between">
-      <h2 style="margin-top:0">☁️ V2.1 — Synchronisation automatique multi-appareils</h2>
+      <h2 style="margin-top:0">☁️ V2.4 — Synchronisation automatique multi-appareils</h2>
       <button class="secondary" onclick="closeCloudSettings()">✕</button>
     </div>
     <p class="muted">La V2.1 utilise Supabase pour centraliser les données. Le même projet doit être configuré sur tous les téléphones et ordinateurs.</p>
@@ -319,10 +323,7 @@ loadEquipmentCatalog();loadDiagnostics();renderDiagnosticMenu();document.getElem
     </div>
     <div id="cloudSetupMessage" class="small muted" style="margin-top:12px"></div><div id="cloudSyncStatus" class="small muted" style="margin-top:8px">Synchronisation automatique non initialisée</div><div id="cloudSyncDetails" class="small muted" style="margin-top:3px"></div>
     <hr style="margin:18px 0;border:0;border-top:1px solid rgba(255,255,255,.1)">
-    <h3>Première mise en service</h3>
-    <p class="small muted">Sur le premier appareil, utilisez « Importer les données locales V1.7 » une seule fois après avoir créé les tables SQL. Les 738 clients et les autres données locales sont alors envoyés vers la base.</p>
-    <button class="secondary" onclick="cloudFirstMigration()">⬆️ Importer les données locales V1.7</button>
-    <button class="secondary" onclick="cloudPullReplaceLocal()">⬇️ Remplacer les données locales par le cloud</button>
+    <p class="small muted">Les opérations d’importation et de remplacement manuel ont été désactivées pour protéger les données des appareils. La synchronisation normale est automatique.</p>
     <p class="small muted" style="margin-bottom:0">Les documents/photos déjà stockés en local sont conservés dans l'historique local ; pour les nouveaux fichiers, la V2 prépare Supabase Storage.</p>
   </div>
 </div>
@@ -342,7 +343,7 @@ function queue(){try{const q=JSON.parse(localStorage.getItem(CLOUD_QUEUE_KEY)||"
 function setQueue(q){localStorage.setItem(CLOUD_QUEUE_KEY,JSON.stringify(q))}
 function queueKey(k,reason){const q=queue();q[k]={reason:reason||"automatic",queuedAt:new Date().toISOString()};setQueue(q)}
 function unqueueKey(k){const q=queue();delete q[k];setQueue(q)}
-function setStatus(msg,cls){const s=document.getElementById("cloudSyncStatus"),d=document.getElementById("cloudSyncDetails");if(s){s.textContent=msg;s.className="muted small "+(cls||"")}if(d)d.textContent="Dernière vérification : "+new Date().toLocaleString("fr-FR")}
+function setStatus(msg,cls){document.querySelectorAll("#cloudSyncStatus").forEach(s=>{s.textContent=msg;s.className="muted small "+(cls||"")});document.querySelectorAll("#cloudSyncDetails").forEach(d=>{d.textContent="Dernière vérification : "+new Date().toLocaleString("fr-FR")})}
 function cloudEscape(v){return String(v==null?"":v)}
 window.openCloudSettings=function(){const c=cfg()||{};document.getElementById("cloudUrl").value=c.url||"";document.getElementById("cloudKey").value=c.key||"";document.getElementById("cloudModal").classList.remove("hidden")};
 window.closeCloudSettings=function(){document.getElementById("cloudModal").classList.add("hidden")};
@@ -352,17 +353,202 @@ window.cloudLogout=async function(){window.cloudSyncReadyForWrites=false;if(sb)a
 async function initCloud(show){const c=cfg();if(!c||!window.supabase){setStatus("Supabase non configuré","cloud-warn");return false}try{if(!sb)sb=window.supabase.createClient(c.url,c.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storage:window.localStorage}});cloudReady=true;setStatus("Base Supabase prête","cloud-ok");if(show)document.getElementById("cloudSetupMessage").innerHTML='<span class="cloud-ok">Configuration Supabase enregistrée.</span>';return true}catch(e){cloudReady=false;setStatus("Erreur de connexion","cloud-error");if(show)document.getElementById("cloudSetupMessage").textContent=e.message||String(e);return false}}
 async function ensureAuth(){if(!sb)return false;const {data}=await sb.auth.getSession();return !!(data&&data.session)}
 async function pullKey(key){const {data,error}=await sb.from("app_sync_state").select("key_name,value_json,version,updated_at").eq("key_name",key).maybeSingle();if(error)throw error;return data}
-async function recordConflict(key,local,remote,localVersion,remoteVersion){try{await sb.from("app_sync_conflicts").insert({key_name:key,local_value_json:local,remote_value_json:remote,local_version:localVersion,remote_version:remoteVersion})}catch(e){console.error(e)}}
-async function upsertKey(key,value,reason){const m=meta();let remote=await pullKey(key),known=Number(m[key]||0);if(key==="metier_clients_deleted_v1"&&remote&&Number(remote.version)>known){const localIds=Array.isArray(value)?value:[];const remoteIds=Array.isArray(remote.value_json)?remote.value_json:[];value=Array.from(new Set([...remoteIds,...localIds]));localStorage.setItem(key,JSON.stringify(value));known=Number(remote.version)}else if(remote&&Number(remote.version)>known){let lv=null,raw=localStorage.getItem(key);try{lv=raw===null?null:JSON.parse(raw)}catch(e){lv=raw}await recordConflict(key,lv,remote.value_json,known,Number(remote.version));setStatus("⚠️ Conflit détecté — aucune donnée écrasée","cloud-warn");queueKey(key,"conflict");return false}const next=Math.max(known,Number(remote?.version||0))+1,user=(await sb.auth.getUser()).data.user?.id||null,payload={key_name:key,value_json:value,version:next,updated_at:new Date().toISOString(),updated_by:user,change_reason:reason||"automatic-sync"};const {error}=await sb.from("app_sync_state").upsert(payload,{onConflict:"key_name"});if(error)throw error;await sb.from("app_sync_history").insert({key_name:key,version:next,value_json:value,change_reason:reason||"automatic-sync",updated_by:user});m[key]=next;setMeta(m);unqueueKey(key);return true}
-async function pullAll(){if(!await ensureAuth())return false;const m=meta(),q=queue();for(const k of CLOUD_KEYS){const r=await pullKey(k);if(!r)continue;const known=Number(m[k]||0);if(q[k]){if(Number(r.version)>known){let lv,raw=localStorage.getItem(k);try{lv=raw===null?null:JSON.parse(raw)}catch(e){lv=raw}await recordConflict(k,lv,r.value_json,known,Number(r.version))}continue}if(known===0||Number(r.version)>known){if(r.value_json===null)localStorage.removeItem(k);else localStorage.setItem(k,JSON.stringify(r.value_json));m[k]=Number(r.version)}}const deletedRaw=localStorage.getItem("metier_clients_deleted_v1"),clientsRaw=localStorage.getItem("metier_clients_v1_2_corrigee");try{const deleted=JSON.parse(deletedRaw||"[]"),clients=JSON.parse(clientsRaw||"[]");if(Array.isArray(deleted)&&Array.isArray(clients)){const ids=new Set(deleted);const filtered=clients.filter(c=>!ids.has(c.id));if(filtered.length!==clients.length)localStorage.setItem("metier_clients_v1_2_corrigee",JSON.stringify(filtered))}}catch(e){console.error("Impossible d’appliquer les suppressions synchronisées",e)}setMeta(m);return true}
-function applyDeletedClientMarkers(){const deletedRaw=localStorage.getItem("metier_clients_deleted_v1"),clientsRaw=localStorage.getItem("metier_clients_v1_2_corrigee");try{const deleted=JSON.parse(deletedRaw||"[]"),clients=JSON.parse(clientsRaw||"[]");if(Array.isArray(deleted)&&Array.isArray(clients)){const ids=new Set(deleted);const filtered=clients.filter(c=>!ids.has(c.id));if(filtered.length!==clients.length)localStorage.setItem("metier_clients_v1_2_corrigee",JSON.stringify(filtered))}}catch(e){console.error("Impossible d’appliquer les suppressions synchronisées",e)}}
-async function flushQueue(){if(!await ensureAuth())return;const keys=Object.keys(queue());for(const k of keys){if(!CLOUD_KEYS.includes(k))continue;let v=null,raw=localStorage.getItem(k);try{v=raw===null?null:JSON.parse(raw)}catch(e){v=raw}try{await upsertKey(k,v,queue()[k]?.reason||"automatic-queue")}catch(e){console.error(e);queueKey(k,"retry")}}applyDeletedClientMarkers()}
-async function startRealtime(){if(!sb)return;if(realtimeChannel){try{await sb.removeChannel(realtimeChannel)}catch(e){}}realtimeChannel=sb.channel("chabanal-v2-sync").on("postgres_changes",{event:"*",schema:"public",table:"app_sync_state"},async payload=>{const row=payload.new||payload.old;if(!row||!row.key_name||syncing)return;const k=row.key_name;if(!CLOUD_KEYS.includes(k))return;const m=meta(),known=Number(m[k]||0),remoteVersion=Number(row.version||0);if(remoteVersion<=known)return;const local=localStorage.getItem(k),remoteValue=payload.eventType==="DELETE"?null:row.value_json;if(k==="metier_clients_deleted_v1"&&Array.isArray(remoteValue)){let localIds=[];try{const parsed=JSON.parse(local||"[]");if(Array.isArray(parsed))localIds=parsed}catch(e){}const merged=Array.from(new Set([...remoteValue,...localIds]));localStorage.setItem(k,JSON.stringify(merged));m[k]=remoteVersion;setMeta(m);applyDeletedClientMarkers();if(merged.length>remoteValue.length)queueKey(k,"realtime-tombstone-merge");setStatus("Suppressions clients synchronisées","cloud-ok");location.reload();return}if(local!==null&&known>0){let lv;try{lv=JSON.parse(local)}catch(e){lv=local}await recordConflict(k,lv,remoteValue,known,remoteVersion);setStatus("⚠️ Modification distante détectée — conflit conservé","cloud-warn");return}if(remoteValue===null)localStorage.removeItem(k);else localStorage.setItem(k,JSON.stringify(remoteValue));m[k]=remoteVersion;setMeta(m);setStatus("Synchronisation automatique effectuée","cloud-ok");location.reload()}).subscribe()}
-async function autoStartCloud(){if(!cloudReady&&!(await initCloud(false)))return false;if(!await ensureAuth()){window.cloudSyncReadyForWrites=false;setStatus("Supabase configuré — session en attente","cloud-warn");return false}try{syncing=true;await pullAll();window.cloudSyncReadyForWrites=true;await flushQueue();await startRealtime();setStatus("☁️ Synchronisation automatique active","cloud-ok");return true}catch(e){console.error(e);window.cloudSyncReadyForWrites=false;setStatus("Erreur de synchronisation automatique","cloud-error");return false}finally{syncing=false}}
-window.cloudSyncNow=async function(){if(!await autoStartCloud()){alert("Aucune session Supabase active. Connectez-vous une fois sur cet appareil.");return}try{syncing=true;await flushQueue();await pullAll();setStatus("Synchronisation terminée","cloud-ok")}catch(e){console.error(e);setStatus("Erreur de synchronisation","cloud-error");alert("Synchronisation impossible : "+(e.message||e))}finally{syncing=false}};
+// V2.4 : les changements locaux restent dans une file tant que le cloud ne les a pas acceptés.
+// Une nouvelle version distante ne doit jamais être écrasée par un appareil en retard.
+const DELETED_KEY="metier_clients_deleted_v1",CLIENTS_KEY="metier_clients_v1_2_corrigee";
+const BACKUP_PREFIX="chabanal_v2_local_backup_20261011_";
+let syncPromise=null,needsRefresh=false,realtimeRetry=null;
+function rawSet(k,v){nativeSet.call(localStorage,k,JSON.stringify(v))}
+function rawDelete(k){nativeRemove.call(localStorage,k)}
+function parseValue(k){const v=localStorage.getItem(k);if(v===null)return null;try{return JSON.parse(v)}catch(e){return v}}
+function uniqueIds(x){return Array.from(new Set(Array.isArray(x)?x:[]))}
+function effectiveValue(k,v){
+  if(k===DELETED_KEY)return uniqueIds(v);
+  if(k===CLIENTS_KEY&&Array.isArray(v)){
+    const deleted=new Set(uniqueIds(parseValue(DELETED_KEY)));
+    return v.filter(c=>c&&!deleted.has(c.id));
+  }
+  return v;
+}
+function stable(v){
+  if(Array.isArray(v))return v.map(stable);
+  if(v&&typeof v==="object"){const out={};Object.keys(v).sort().forEach(k=>out[k]=stable(v[k]));return out}
+  return v;
+}
+function sameValue(k,a,b){
+  const normal=v=>{
+    v=effectiveValue(k,v);
+    if(k===CLIENTS_KEY&&Array.isArray(v))return v.map(c=>({...c,email:c.email||"",maintenanceMonth:c.maintenanceMonth||"",interventions:Array.isArray(c.interventions)?c.interventions:[]})).sort((x,y)=>String(x.id).localeCompare(String(y.id)));
+    if(k===DELETED_KEY&&Array.isArray(v))return [...v].sort();
+    return v;
+  };
+  return JSON.stringify(stable(normal(a)))===JSON.stringify(stable(normal(b)));
+}
+function applyDeletedClientMarkers(){
+  const before=parseValue(CLIENTS_KEY);
+  if(!Array.isArray(before))return false;
+  const after=effectiveValue(CLIENTS_KEY,before);
+  if(after.length!==before.length){rawSet(CLIENTS_KEY,after);needsRefresh=true;return true}
+  return false;
+}
+function backupBeforeRemote(k,old,remoteVersion){
+  if(old===null)return true;
+  const id=BACKUP_PREFIX+k;
+  try{if(localStorage.getItem(id)===null)nativeSet.call(localStorage,id,JSON.stringify({at:new Date().toISOString(),cloudVersion:remoteVersion,data:old}));return true}
+  catch(e){console.error("Sauvegarde locale impossible",k,e);setStatus("⚠️ Stockage saturé : données locales préservées","cloud-warn");return false}
+}
+async function recordConflict(k,local,remote,known,remoteVersion){
+  const marker="chabanal_v2_conflict_reported_"+k;
+  if(localStorage.getItem(marker)===String(remoteVersion))return;
+  try{
+    const {error}=await sb.from("app_sync_conflicts").insert({key_name:k,local_value_json:local,remote_value_json:remote,local_version:known,remote_version:remoteVersion});
+    if(error)throw error;
+    nativeSet.call(localStorage,marker,String(remoteVersion));
+  }catch(e){console.error("Journal de conflit",e)}
+}
+function markConflict(k,reason){if(!queue()[k])queueKey(k,reason||"conflict");setStatus("⚠️ Conflit conservé : aucune donnée écrasée","cloud-warn")}
+async function upsertKey(k,value,reason){
+  let remote=await pullKey(k);
+  const m=meta(),known=Number(m[k]||0),remoteVersion=Number(remote?.version||0);
+  if(k===DELETED_KEY){
+    value=uniqueIds([...uniqueIds(remote?.value_json),...uniqueIds(value)]);
+    rawSet(k,value);
+  }else if(remote&&remoteVersion>known){
+    if(sameValue(k,value,remote.value_json)){
+      rawSet(k,effectiveValue(k,remote.value_json));m[k]=remoteVersion;setMeta(m);unqueueKey(k);return true;
+    }
+    await recordConflict(k,value,remote.value_json,known,remoteVersion);
+    markConflict(k,"conflict");return false;
+  }
+  if(remote&&sameValue(k,value,remote.value_json)){
+    m[k]=remoteVersion;setMeta(m);unqueueKey(k);return true;
+  }
+  const next=remoteVersion+1,user=(await sb.auth.getUser()).data.user?.id||null;
+  const payload={value_json:value,version:next,updated_at:new Date().toISOString(),updated_by:user,change_reason:reason||"automatic-sync"};
+  let result;
+  if(remote){
+    result=await sb.from("app_sync_state").update(payload).eq("key_name",k).eq("version",remoteVersion).select("version");
+  }else{
+    result=await sb.from("app_sync_state").insert({key_name:k,...payload}).select("version");
+  }
+  if(result.error){markConflict(k,"retry");console.error("Envoi non confirmé",k,result.error);return false}
+  if(!Array.isArray(result.data)||result.data.length!==1){markConflict(k,"concurrent-update");return false}
+  // Si un utilisateur a modifié cette clé pendant la requête, son édition reste en attente.
+  const after=parseValue(k),isStillSame=sameValue(k,after,value);
+  m[k]=next;setMeta(m);
+  if(isStillSame)unqueueKey(k);
+  else queueKey(k,"edited-during-upload");
+  try{const h=await sb.from("app_sync_history").insert({key_name:k,version:next,value_json:value,change_reason:reason||"automatic-sync",updated_by:user});if(h.error)console.warn("Historique non enregistré",h.error)}catch(e){console.warn(e)}
+  return true;
+}
+async function pullAll(){
+  if(!await ensureAuth())return false;
+  // Les marqueurs de suppression doivent être lus avant les fiches clients.
+  for(const k of [DELETED_KEY,...CLOUD_KEYS.filter(x=>x!==DELETED_KEY)]){
+    const r=await pullKey(k);if(!r)continue;
+    const m=meta(),known=Number(m[k]||0),rv=Number(r.version||0);
+    const local=parseValue(k),pending=!!queue()[k];
+    if(k===DELETED_KEY){
+      const merged=uniqueIds([...uniqueIds(local),...uniqueIds(r.value_json)]);
+      if(!sameValue(k,local,merged)){rawSet(k,merged);needsRefresh=true}
+      m[k]=rv;setMeta(m);
+      if(sameValue(k,merged,r.value_json))unqueueKey(k);
+      else if(!pending)queueKey(k,"merge-deletions");
+      continue;
+    }
+    if(pending){
+      if(sameValue(k,local,r.value_json)){
+        if(k===CLIENTS_KEY){const filtered=effectiveValue(k,r.value_json);if(!sameValue(k,local,filtered))needsRefresh=true;rawSet(k,filtered)}
+        m[k]=rv;setMeta(m);unqueueKey(k);
+      }else if(rv>known){
+        await recordConflict(k,local,r.value_json,known,rv);
+        markConflict(k,"conflict");
+      }
+      continue;
+    }
+    if(known===0||rv>known){
+      const next=effectiveValue(k,r.value_json);
+      if(local!==null&&!sameValue(k,local,next)){
+        if(!backupBeforeRemote(k,local,rv)){markConflict(k,"backup-required");continue}
+      }
+      if(!sameValue(k,local,next)){if(next===null)rawDelete(k);else rawSet(k,next);needsRefresh=true}
+      // En cas de différences de format seulement, conserver le contenu local normalisé.
+      m[k]=rv;setMeta(m);
+    }
+  }
+  applyDeletedClientMarkers();
+  return true;
+}
+async function flushQueue(){
+  if(!await ensureAuth())return;
+  for(const k of Object.keys(queue())){
+    if(!CLOUD_KEYS.includes(k))continue;
+    try{await upsertKey(k,parseValue(k),queue()[k]?.reason||"automatic-queue")}
+    catch(e){console.error("Envoi reporté",k,e);markConflict(k,"retry")}
+  }
+  applyDeletedClientMarkers();
+}
+function refreshMetierFromCloud(){
+  const home=document.getElementById("home");
+  if(!home||home.classList.contains("hidden")||document.querySelector(".modal-backdrop"))return false;
+  try{
+    const data=effectiveValue(CLIENTS_KEY,parseValue(CLIENTS_KEY));
+    if(Array.isArray(data)){
+      clients=data.map(c=>({...c,email:c.email||"",maintenanceMonth:(Number(c.maintenanceMonth)>=1&&Number(c.maintenanceMonth)<=12?String(Number(c.maintenanceMonth)):""),interventions:Array.isArray(c.interventions)?c.interventions:[]}));
+    }
+    loadEquipmentCatalog();loadDiagnostics();renderDiagnosticMenu();search();
+    needsRefresh=false;return true;
+  }catch(e){console.error("Actualisation de l'écran impossible",e);return false}
+}
+window.refreshMetierFromCloud=refreshMetierFromCloud;
+async function startRealtime(){
+  if(!sb||realtimeChannel)return;
+  realtimeChannel=sb.channel("chabanal-v2-sync").on("postgres_changes",{event:"*",schema:"public",table:"app_sync_state"},payload=>{
+    const row=payload.new||payload.old;
+    if(!row||!CLOUD_KEYS.includes(row.key_name))return;
+    clearTimeout(window.__cloudRemoteTimer);
+    window.__cloudRemoteTimer=setTimeout(()=>autoStartCloud().catch(console.error),400);
+  }).subscribe(state=>{
+    if(state==="CHANNEL_ERROR"||state==="TIMED_OUT"||state==="CLOSED"){
+      realtimeChannel=null;
+      if(Object.keys(queue()).length)setStatus("⚠️ Modifications en attente — connexion à vérifier","cloud-warn");
+      else setStatus("⚠️ Connexion temps réel interrompue — nouvelle tentative","cloud-warn");
+    }
+  });
+}
+async function autoStartCloud(){
+  if(syncPromise)return syncPromise;
+  syncPromise=(async()=>{
+    if(!cloudReady&&!(await initCloud(false)))return false;
+    if(!await ensureAuth()){
+      window.cloudSyncReadyForWrites=false;
+      setStatus("Supabase configuré — session en attente","cloud-warn");return false;
+    }
+    try{
+      syncing=true;
+      await pullAll();
+      window.cloudSyncReadyForWrites=true;
+      await flushQueue();
+      await startRealtime();
+      if(needsRefresh&&!refreshMetierFromCloud())setStatus("Données reçues — revenir à l’accueil pour actualiser","cloud-warn");
+      else if(Object.keys(queue()).length)setStatus("⚠️ Synchronisation partielle : modifications en conflit conservées","cloud-warn");
+      else setStatus("☁️ Synchronisation automatique active","cloud-ok");
+      return true;
+    }catch(e){
+      console.error(e);setStatus("Erreur de synchronisation — données locales conservées","cloud-error");return false;
+    }finally{syncing=false}
+  })();
+  try{return await syncPromise}finally{syncPromise=null}
+}
+window.cloudSyncNow=async function(){
+  const ok=await autoStartCloud();
+  if(!ok)alert("Synchronisation incomplète. Vérifiez la connexion et la session Supabase. Les données locales sont conservées.");
+};
+// Vérification périodique : un appareil qui a manqué Realtime se remet à jour.
+setInterval(()=>{if(document.visibilityState==="visible"&&cfg())autoStartCloud().catch(console.error)},120000);
 window.cloudFirstMigration=async function(){if(!await initCloud(true))return;if(!await ensureAuth()){alert("Connectez d'abord un utilisateur Supabase Auth.");return}if(!confirm("Importer les données locales V1.7 dans la base en ligne ? Cette opération est à faire sur le premier appareil uniquement."))return;try{syncing=true;window.cloudSyncReadyForWrites=false;for(const k of CLOUD_KEYS){let v=null,raw=localStorage.getItem(k);try{v=raw===null?null:JSON.parse(raw)}catch(e){v=raw}const r=await pullKey(k);if(r&&r.value_json!==null){const overwrite=confirm("La clé « "+k+" » existe déjà dans le cloud. Remplacer le cloud par les données locales ?\n\nOui = local → cloud\nNon = conserver le cloud");if(!overwrite)continue}await upsertKey(k,v,"initial-v1.7-migration")}setStatus("Migration V1.7 → cloud terminée","cloud-ok");alert("Migration terminée. Les données locales ont été enregistrées dans la base.")}catch(e){console.error(e);alert("Migration impossible : "+(e.message||e))}finally{window.cloudSyncReadyForWrites=true;syncing=false;await startRealtime()}};
 window.cloudPullReplaceLocal=async function(){if(!await initCloud(true))return;if(!await ensureAuth()){alert("Connectez d'abord un utilisateur Supabase Auth.");return}if(!confirm("Remplacer les données locales par la copie cloud ?"))return;try{syncing=true;window.cloudSyncReadyForWrites=false;const m=meta();for(const k of CLOUD_KEYS){const r=await pullKey(k);if(r){localStorage.setItem(k,JSON.stringify(r.value_json));m[k]=Number(r.version)}}setMeta(m);location.reload()}catch(e){console.error(e);alert("Récupération cloud impossible : "+(e.message||e))}finally{syncing=false}};
-const nativeSet=Storage.prototype.setItem,nativeRemove=Storage.prototype.removeItem;Storage.prototype.setItem=function(k,v){nativeSet.call(this,k,v);if(this===localStorage&&CLOUD_KEYS.includes(k)&&window.cloudSyncReadyForWrites&&!syncing){queueKey(k,"automatic-write");clearTimeout(window.__cloudSyncTimer);window.__cloudSyncTimer=setTimeout(()=>autoStartCloud().catch(e=>console.error(e)),700)}};Storage.prototype.removeItem=function(k){nativeRemove.call(this,k);if(this===localStorage&&CLOUD_KEYS.includes(k)&&window.cloudSyncReadyForWrites&&!syncing){queueKey(k,"automatic-delete");clearTimeout(window.__cloudSyncTimer);window.__cloudSyncTimer=setTimeout(()=>autoStartCloud().catch(e=>console.error(e)),700)}};
+const nativeSet=Storage.prototype.setItem,nativeRemove=Storage.prototype.removeItem;Storage.prototype.setItem=function(k,v){nativeSet.call(this,k,v);if(this===localStorage&&CLOUD_KEYS.includes(k)){queueKey(k,"automatic-write");if(window.cloudSyncReadyForWrites){clearTimeout(window.__cloudSyncTimer);window.__cloudSyncTimer=setTimeout(()=>autoStartCloud().catch(console.error),700)}}};Storage.prototype.removeItem=function(k){nativeRemove.call(this,k);if(this===localStorage&&CLOUD_KEYS.includes(k)){queueKey(k,"automatic-delete");if(window.cloudSyncReadyForWrites){clearTimeout(window.__cloudSyncTimer);window.__cloudSyncTimer=setTimeout(()=>autoStartCloud().catch(console.error),700)}}};
 window.cloudSyncReadyForWrites=false;
 window.addEventListener("online",()=>autoStartCloud());
 window.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")autoStartCloud()});
