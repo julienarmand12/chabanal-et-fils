@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Récupérer les numéros de série — Chabanal</title><meta name="robots" content="noindex,nofollow">
+<style>
+:root{font-family:system-ui,Arial,sans-serif;background:#03162e;color:#eaf2ff}*{box-sizing:border-box}
+body{max-width:720px;margin:auto;padding:18px;line-height:1.5}h1{font-size:1.45rem}h2{font-size:1.12rem;margin:0 0 12px}
+section{background:#092847;border:1px solid #275575;border-radius:12px;padding:16px;margin:14px 0}
+button,a.btn{display:inline-block;padding:12px 15px;border:0;border-radius:9px;background:#187de1;color:#fff;text-decoration:none;font-size:1rem;font-weight:650;margin:4px}
+button:disabled{opacity:.45}button.good{background:#148055}
+small,.muted{color:#c2d5eb}.ok{color:#8fe6a6}.warn{color:#ffd38b}.bad{color:#ff9d9d}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.88rem;padding:12px;background:#041b34;border-radius:8px}
+label{display:flex;align-items:start;gap:10px;margin:12px 0}input{width:21px;height:21px;flex-shrink:0}
+</style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script></head><body>
+<h1>Réconcilier les numéros de série</h1>
+<p class="muted">Téléphone 2 uniquement. Choix confirmé : <strong>conserver tous les numéros enregistrés dans Supabase, y compris celui de Zaurin</strong>. Cet outil n'écrit rien dans Supabase : il répare uniquement la copie locale du téléphone.</p>
+<section><h2>1. Contrôler les différences</h2>
+<button id="check">Vérifier avant réparation</button><p id="status" role="status">En attente du contrôle.</p>
+<pre id="report">—</pre></section>
+<section><h2>2. Sauvegarder les données</h2>
+<button id="save" disabled>Télécharger la sauvegarde</button>
+<label><input id="confirm" type="checkbox" disabled>La sauvegarde JSON est bien présente dans les téléchargements de mon téléphone.</label>
+</section><section><h2>3. Récupérer la copie Supabase</h2>
+<button class="good" id="apply" disabled>Récupérer les 7 numéros depuis Supabase</button>
+<p id="result" role="status"></p></section>
+<p class="muted"><small>Ferme d'abord l'application principale sur ce téléphone, puis ouvre ce lien dans Chrome. Ne vide pas le cache, ne désinstalle pas l'application et ne restaure aucune autre sauvegarde.</small></p>
+<a class="btn" href="./audit-numeros-serie.html">Audit numéros</a><a class="btn" href="./diagnostic-sync.html">Diagnostic clients</a>
+<script>
+(()=>{"use strict";
+const K="metier_equipement_numeros_serie_v1",META="chabanal_v2_cloud_meta",
+ Q="chabanal_v2_sync_queue",CFG="chabanal_v2_cloud_config",CL="metier_clients_v1_2_corrigee";
+const $=id=>document.getElementById(id);
+const get=k=>{try{return JSON.parse(localStorage.getItem(k)||"null")}catch{return null}};
+const obj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
+const clean=x=>x==null?"":String(x).trim();
+const stable=x=>Array.isArray(x)?x.map(stable):obj(x)?Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x;
+const sig=x=>JSON.stringify(stable(x));
+const fold=x=>String(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+let previous=null,sb=null,busy=false,downloaded=false;
+function status(id,msg,cls){$(id).textContent=msg;$(id).className=cls||""}
+function buttons(){
+ $("check").disabled=busy;
+ $("save").disabled=busy||!previous;
+ $("confirm").disabled=busy||!previous||!downloaded;
+ $("apply").disabled=busy||!previous||!downloaded||!$("confirm").checked;
+}
+function reset(){previous=null;downloaded=false;$("confirm").checked=false;buttons()}
+function compare(local,cloud,clients){
+ if(!obj(local)||!obj(cloud)||!Array.isArray(clients))throw Error("Données locales ou Supabase invalides.");
+ const names=new Map(clients.filter(c=>c&&c.id!=null).map(c=>[String(c.id),fold(c.name)]));
+ const diffs=[];
+ for(const id of new Set([...Object.keys(local),...Object.keys(cloud)])){
+  const a=obj(local[id])?local[id]:{},b=obj(cloud[id])?cloud[id]:{};
+  for(const model of new Set([...Object.keys(a),...Object.keys(b)])){
+   const x=clean(a[model]),y=clean(b[model]);
+   if(x===y)continue;
+   diffs.push({id,model,type:x&&y?"conflict":x?"localOnly":"cloudOnly",name:names.get(id)||""});
+  }
+ }
+ const conflicts=diffs.filter(d=>d.type==="conflict"),fromCloud=diffs.filter(d=>d.type==="cloudOnly");
+ const expected=["andre","ancelot","almansa","alvarez","andrianaivoravelo","almodovar / guez / montal"].sort();
+ const found=fromCloud.map(d=>d.name).sort();
+ if(diffs.length!==7||conflicts.length!==1||fromCloud.length!==6||
+    diffs.some(d=>d.type==="localOnly")||conflicts[0].name!=="zaurin"||
+    sig(found)!==sig(expected)||new Set(diffs.map(d=>d.id)).size!==7)
+  throw Error("Les écarts ont changé ou ne correspondent pas aux 7 cas identifiés. Aucune opération.");
+ return {diffs,conflicts,fromCloud};
+}
+async function remote(){
+ const conf=get(CFG);
+ if(!conf?.url||!conf?.key||!window.supabase)throw Error("Configuration Supabase ou connexion indisponible.");
+ if(!sb)sb=window.supabase.createClient(conf.url,conf.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storage:localStorage}});
+ const {data:auth,error:ae}=await sb.auth.getSession();if(ae)throw ae;
+ if(!auth?.session)throw Error("Session Supabase absente. Se connecter dans l'application.");
+ const [rs,rc]=await Promise.all([
+  sb.from("app_sync_state").select("value_json,version").eq("key_name",K).maybeSingle(),
+  sb.from("app_sync_state").select("value_json,version").eq("key_name",CL).maybeSingle()
+ ]);
+ if(rs.error)throw rs.error;if(rc.error)throw rc.error;
+ if(!rs.data||!obj(rs.data.value_json)||!Number.isInteger(Number(rs.data.version))||!rc.data||!Array.isArray(rc.data.value_json))
+  throw Error("Copie Supabase manquante ou non valide.");
+ return {serial:rs.data,clients:rc.data};
+}
+$("confirm").onchange=buttons;
+$("check").onclick=async()=>{
+ reset();busy=true;buttons();status("result","");status("status","Lecture de Supabase…","warn");
+ try{
+  const local=get(K),server=await remote();
+  const plan=compare(local,server.serial.value_json,server.clients.value_json);
+  const meta=get(META)||{},queue=get(Q)||{};
+  previous={local,server,plan,localSig:sig(local),cloudSig:sig(server.serial.value_json)};
+  $("report").textContent=[
+   "7 numéros à réconcilier :",
+   "• 6 présents uniquement dans Supabase",
+   "• 1 conflit (Zaurin) : la valeur Supabase sera conservée",
+   "• 0 numéro uniquement sur ce téléphone",
+   "Version connue localement : "+Number(meta[K]||0),
+   "Version Supabase : "+server.serial.version,
+   "Synchronisation numéros en attente : "+(Object.hasOwn(queue,K)?"oui":"non"),
+   "Aucune donnée modifiée à ce stade."
+  ].join("\n");
+  status("status","Vérification réussie. Tu peux télécharger la sauvegarde.","ok");
+ }catch(e){$("report").textContent="—";status("status","Vérification bloquée : "+(e?.message||e),"bad")}
+ finally{busy=false;buttons()}
+};
+$("save").onclick=()=>{
+ if(!previous||busy)return;
+ try{
+  const backup={createdAt:new Date().toISOString(),label:"Avant récupération numéros depuis Supabase",
+   local:{serialNumbers:previous.local,meta:get(META),queue:get(Q)},
+   cloud:{serialNumbers:previous.server.serial.value_json,version:previous.server.serial.version}};
+  const blob=new Blob([JSON.stringify(backup)],{type:"application/json"});
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download="sauvegarde_series_chabanal_"+new Date().toISOString().slice(0,10)+".json";
+  document.body.append(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+  downloaded=true;buttons();
+  status("status","Sauvegarde lancée. Vérifie le fichier dans Téléchargements.","warn");
+ }catch(e){reset();status("status","Impossible de créer la sauvegarde : "+(e?.message||e),"bad")}
+};
+$("apply").onclick=async()=>{
+ if(!previous||!downloaded||!$("confirm").checked||busy)return;
+ if(!confirm("Remplacer les numéros de série locaux par ceux de Supabase, y compris pour Zaurin ? Le fichier de sauvegarde permet de revenir en arrière."))return;
+ busy=true;buttons();status("result","Nouvelle vérification avant l'enregistrement…","warn");
+ try{
+  if(sig(get(K))!==previous.localSig)throw Error("Des numéros ont changé localement. Relancer le contrôle.");
+  const cloud=await remote();
+  if(Number(cloud.serial.version)!==Number(previous.server.serial.version)||
+     sig(cloud.serial.value_json)!==previous.cloudSig)
+   throw Error("Supabase a changé depuis le contrôle. Réparation annulée.");
+  compare(get(K),cloud.serial.value_json,cloud.clients.value_json);
+  const meta=get(META)||{},queue=get(Q)||{};
+  const updatedMeta={...meta,[K]:Number(cloud.serial.version)};
+  const updatedQueue={...queue};delete updatedQueue[K];
+  const old={serial:localStorage.getItem(K),meta:localStorage.getItem(META),queue:localStorage.getItem(Q)};
+  try{
+   localStorage.setItem(K,JSON.stringify(cloud.serial.value_json));
+   localStorage.setItem(META,JSON.stringify(updatedMeta));
+   localStorage.setItem(Q,JSON.stringify(updatedQueue));
+   if(sig(get(K))!==sig(cloud.serial.value_json)||Number((get(META)||{})[K])!==Number(cloud.serial.version)||
+     Object.prototype.hasOwnProperty.call(get(Q)||{},K))
+    throw Error("Vérification locale après l'écriture non conforme.");
+  }catch(e){
+   for(const [key,value] of [[K,old.serial],[META,old.meta],[Q,old.queue]]){
+    try{if(value===null)localStorage.removeItem(key);else localStorage.setItem(key,value)}catch(err){console.error(err)}
+   }
+   throw Error("Écriture locale incomplète : "+(e?.message||e));
+  }
+  reset();
+  status("status","Réconciliation terminée : 7 numéros conformes à Supabase.","ok");
+  status("result","✅ Les numéros de série du téléphone 2 sont désormais alignés sur Supabase (version "+cloud.serial.version+"). Aucun changement dans la base en ligne. Ferme cette page, ouvre l'application et actualise-la. Lance ensuite l'audit sur les deux téléphones.","ok");
+ }catch(e){reset();status("result","⚠️ "+(e?.message||e)+" Aucune écriture cloud effectuée.","bad")}
+ finally{busy=false;buttons()}
+};
+buttons();
+})();
+</script></body></html>
