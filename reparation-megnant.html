@@ -48,7 +48,14 @@ function status(msg,kind){$("status").className=kind||"";$("status").textContent
 function result(msg,kind){$("result").className=kind||"";$("result").textContent=msg}
 function lock(){const ok=!!preview&&!running;$("check").disabled=running;$("backup").disabled=!ok;$("confirmed").disabled=!ok;$("merge").disabled=!ok||!accepted;}
 function invalidate(){preview=null;accepted=false;$("confirmed").checked=false;lock()}
-function mapById(xs){const m=new Map();for(const c of xs){const k=String(c.id);if(m.has(k))throw Error("ID client répété : analyse arrêtée.");m.set(k,c)}return m}
+function groupById(xs){
+ const groups=new Map();
+ for(const c of xs){
+  const id=String(c.id),g=groups.get(id)||[];
+  g.push(c);groups.set(id,g);
+ }
+ return groups;
+}
 function counts(xs){const m=new Map();for(const x of a(xs)){const k=sig(x);m.set(k,(m.get(k)||0)+1)}return m}
 function compareInterventions(local,remote){
  const cloud=counts(remote),missing=[];
@@ -61,20 +68,34 @@ function compareInterventions(local,remote){
 }
 function examine(loc,locD,rem,remD){
  if(!Array.isArray(loc)||!Array.isArray(rem))throw Error("Liste de clients absente ou invalide.");
- const l=visible(loc,locD),r=visible(rem,remD),lm=mapById(l),rm=mapById(r);
- if(l.length!==r.length||lm.size!==rm.size||[...lm.keys()].some(id=>!rm.has(id)))throw Error("Liste des clients divergente : aucune fusion automatique autorisée.");
- let target=null;
- for(const [id,lc] of lm){
-  const rc=rm.get(id),c=compareInterventions(lc.interventions,rc.interventions);
+ const l=visible(loc,locD),r=visible(rem,remD);
+ const lm=groupById(l),rm=groupById(r);
+ if(l.length!==r.length||lm.size!==rm.size||[...lm.keys()].some(id=>!rm.has(id)))
+  throw Error("Liste des clients divergente : aucune fusion automatique autorisée.");
+ let target=null,duplicateIds=0;
+ for(const [id,localGroup] of lm){
+  const remoteGroup=rm.get(id);
+  if(localGroup.length!==remoteGroup.length)
+   throw Error("Nombre de fiches différent pour un identifiant : opération bloquée.");
+  const names=group=>group.map(c=>norm(c.name)).sort();
+  if(sig(names(localGroup))!==sig(names(remoteGroup)))
+   throw Error("Des fiches portant le même identifiant ne correspondent pas : opération bloquée.");
+  if(localGroup.length>1)duplicateIds++;
+  const li=localGroup.flatMap(c=>a(c.interventions));
+  const ri=remoteGroup.flatMap(c=>a(c.interventions));
+  const c=compareInterventions(li,ri);
   if(c.missing.length===0&&c.extraCloud===0)continue;
-  const targetName=norm(lc.name).includes("megnant")&&norm(rc.name).includes("megnant");
-  if(!targetName||c.missing.length!==1||c.extraCloud!==0||target)throw Error("Divergence supplémentaire ou ambiguë détectée : écriture refusée.");
-  target={id,name:lc.name,intervention:c.missing[0],cloudCount:a(rc.interventions).length};
+  const unique=localGroup.length===1&&remoteGroup.length===1;
+  const targetName=unique&&norm(localGroup[0].name).includes("megnant")&&norm(remoteGroup[0].name).includes("megnant");
+  if(!targetName||c.missing.length!==1||c.extraCloud!==0||target)
+   throw Error("Divergence supplémentaire ou ambiguë détectée : écriture refusée.");
+  target={id,name:localGroup[0].name,intervention:c.missing[0],cloudCount:ri.length};
  }
  if(!target)throw Error("Aucune intervention Megnant manquante : rien à ajouter (elle est peut-être déjà synchronisée).");
- const matching=[...lm.values()].filter(c=>norm(c.name).includes("megnant"));
- if(matching.length!==1||norm(rm.get(target.id).name)!==norm(target.name))throw Error("Identification Megnant ambiguë : écriture refusée.");
- return {target,lCount:l.length,rCount:r.length,lTotal:nInter(l),rTotal:nInter(r)};
+ const matching=[...lm.values()].flat().filter(c=>norm(c.name).includes("megnant"));
+ if(matching.length!==1||rem.filter(c=>String(c?.id)===String(target.id)).length!==1)
+  throw Error("Identification Megnant ambiguë : écriture refusée.");
+ return {target,lCount:l.length,rCount:r.length,lTotal:nInter(l),rTotal:nInter(r),duplicateIds};
 }
 async function sessionClient(){
  const c=read(CFG);
@@ -110,6 +131,7 @@ $("check").onclick=async()=>{
    "Clients locaux et cloud : "+checked.lCount+" / "+checked.rCount,
    "Interventions locales et cloud : "+checked.lTotal+" / "+checked.rTotal,
    "Version cloud : "+server.clients.version,
+   "Identifiants partagés entre plusieurs fiches, conservés : "+checked.duplicateIds,
    "Fiche : "+checked.target.name,
    "Date : "+String(i.date||i.iso||"(sans date)"),
    "Description : "+String(i.description||"(aucune)"),
