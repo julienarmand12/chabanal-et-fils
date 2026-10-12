@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Chabanal et fils — v2.6</title>
+<title>Chabanal et fils — v2.7</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <meta name="theme-color" content="#03162e">
 <link rel="apple-touch-icon" href="./icon-192.png">
@@ -36,6 +36,39 @@ h1,h2,h3,p{margin-top:0}.grid{display:grid;grid-template-columns:repeat(auto-fit
  #home .home-label{font-size:12px}
  #home .home-tile{padding:8px;gap:5px}
 }
+
+
+/* Recherche des modèles : clavier stable, boutons de résultats distincts. */
+.equipment-search-row{display:flex;align-items:center;gap:8px;position:sticky;top:0;z-index:2;background:#18172d;padding:5px 3px 8px}
+.equipment-search-row .model-search{flex:1;min-width:0;margin:0;font-size:16px}
+.equipment-search-done{flex:none;min-width:47px;padding:10px 11px}
+.equipment-model-results{display:grid;gap:3px;max-height:350px;overflow-y:auto;overscroll-behavior:contain}
+.equipment-model-results .equipment-menu-row{min-height:48px}
+/* Thème Halloween V2.7 : décor derrière les fiches, sans bloquer les clics. */
+body{
+ background:
+ radial-gradient(ellipse at 86% 13%,rgba(255,145,52,.16) 0,transparent 38%),
+ radial-gradient(ellipse at 4% 80%,rgba(116,56,145,.28) 0,transparent 48%),
+ linear-gradient(160deg,#110d22 0%,#1a112d 52%,#0d172b 100%);
+ background-attachment:fixed;
+}
+body::before{
+ content:"";position:fixed;inset:0;
+ background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22540%22%20height%3D%22540%22%20viewBox%3D%220%200%20540%20540%22%3E%0A%3Cg%20opacity%3D%22.26%22%3E%3Ccircle%20cx%3D%22412%22%20cy%3D%22105%22%20r%3D%2264%22%20fill%3D%22%23ffbf6d%22%2F%3E%3Ccircle%20cx%3D%22429%22%20cy%3D%2287%22%20r%3D%2265%22%20fill%3D%22%231b112b%22%2F%3E%3C%2Fg%3E%0A%3Cg%20fill%3D%22%23cd8fe0%22%20opacity%3D%22.43%22%3E%3Cpath%20d%3D%22M120%20110q-18-27-48-17q11%2015%208%2025q-16-12-32-4q19%2024%2044%2022l26%2017%2023-17q27%202%2043-22-16-8-31%204-4-11%208-25-28-10-41%2017l-5-9z%22%2F%3E%3Cpath%20d%3D%22M362%20294q-9-15-25-9l5%2013-15-4q10%2016%2029%2015l10%2010%2012-10q18%201%2028-15l-16%204%204-13q-16-6-25%209l-3-6z%22%2F%3E%3C%2Fg%3E%0A%3Cg%20transform%3D%22translate(48%20380)%22%20opacity%3D%22.44%22%3E%3Cellipse%20cx%3D%2245%22%20cy%3D%2258%22%20rx%3D%2246%22%20ry%3D%2234%22%20fill%3D%22%23ec6b23%22%2F%3E%3Cellipse%20cx%3D%2245%22%20cy%3D%2258%22%20rx%3D%2226%22%20ry%3D%2234%22%20fill%3D%22%23ff9b38%22%2F%3E%3Cpath%20d%3D%22M43%2027q-4-17%2010-19l3%207q-9%202-6%2013z%22%20fill%3D%22%239b9d4d%22%2F%3E%3Cpath%20d%3D%22M17%2055l13-12%207%2016zm37%204%208-16%2013%2012zM30%2075q16%2018%2034%200l-9-2-8%207-7-7z%22%20fill%3D%22%23221023%22%2F%3E%3C%2Fg%3E%0A%3Cg%20stroke%3D%22%23bcb0d9%22%20opacity%3D%22.35%22%20stroke-width%3D%221.4%22%20fill%3D%22none%22%3E%0A%3Cpath%20d%3D%22M0%200L132%200M0%200L100%2044M0%200L74%2092M0%200L35%20125M0%200L0%20136%22%2F%3E%0A%3Cpath%20d%3D%22M0%2036Q39%2015%2065%200M0%2074Q70%2053%2097%200M0%20110Q97%2094%20125%200%22%2F%3E%0A%3C%2Fg%3E%0A%3Cg%20fill%3D%22%23efdcf2%22%20opacity%3D%22.17%22%3E%3Cpath%20d%3D%22M440%20392q0-32%2028-32t28%2032v57l-14-10-13%2010-13-10-16%2010z%22%2F%3E%3Ccircle%20cx%3D%22457%22%20cy%3D%22393%22%20r%3D%223%22%20fill%3D%22%23211024%22%2F%3E%3Ccircle%20cx%3D%22477%22%20cy%3D%22393%22%20r%3D%223%22%20fill%3D%22%23211024%22%2F%3E%3C%2Fg%3E%0A%3Cg%20fill%3D%22%23f4d8a1%22%20opacity%3D%22.36%22%3E%3Ccircle%20cx%3D%22234%22%20cy%3D%2268%22%20r%3D%222%22%2F%3E%3Ccircle%20cx%3D%22295%22%20cy%3D%22217%22%20r%3D%221.8%22%2F%3E%3Ccircle%20cx%3D%22155%22%20cy%3D%22301%22%20r%3D%222.3%22%2F%3E%3Ccircle%20cx%3D%22496%22%20cy%3D%22236%22%20r%3D%222%22%2F%3E%3C%2Fg%3E%0A%3C%2Fsvg%3E");
+ background-repeat:repeat;background-size:540px 540px;
+ background-position:center 70px;
+ pointer-events:none;z-index:0;opacity:.65;
+}
+body::after{
+ content:"";position:fixed;inset:0;
+ background:radial-gradient(ellipse at 100% 100%,rgba(242,106,30,.12),transparent 42%);
+ pointer-events:none;z-index:0;
+}
+main.wrap{position:relative;z-index:1}
+header{background:linear-gradient(90deg,#140e24,#201432 68%,#160f2c);border-bottom-color:#904f45}
+.card,.panel{background:linear-gradient(145deg,rgba(28,21,47,.96),rgba(10,22,41,.97));border-color:#563b64}
+.card.click:hover,.clickable-card:hover{border-color:#fb9646}
+@media(max-width:650px){body::before{background-size:360px 360px;background-position:center 92px;opacity:.49}}
 </style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body><div id="authOverlay" class="auth-overlay">
@@ -241,9 +274,50 @@ function modelClientIds(id){return Object.keys(equipmentAssignments).filter(cid=
 function eqClientName(id){const c=clients.find(x=>x.id===id);return c?c.name:"Client non renseigné"}
 function migrateOldEquipmentData(){let old=[];try{old=JSON.parse(localStorage.getItem(OLD_EQUIP_KEY)||"[]");if(!Array.isArray(old))old=[]}catch(e){old=[]}if(!old.length)return;let changed=false;old.forEach(e=>{const type=e.type==="pac_air_air"?"pac_air_air":"chaudiere",brand=String(e.brand||"").trim(),model=String(e.model||"").trim();let found=equipmentModels.find(m=>m.type===type&&m.brand===brand&&m.model===model);if(!found){found={id:"model_"+Date.now()+"_"+Math.random().toString(36).slice(2,8),type,brand,model,notes:String(e.notes||""),documents:Array.isArray(e.explodedViews)?e.explodedViews.map(v=>({name:v.name||"Document",type:v.type||"application/octet-stream",size:v.size||0,data:v.data})):[],createdAt:new Date().toISOString()};equipmentModels.push(found);changed=true}if(e.clientId){if(!Array.isArray(equipmentAssignments[e.clientId]))equipmentAssignments[e.clientId]=[];if(!equipmentAssignments[e.clientId].includes(found.id)){equipmentAssignments[e.clientId].push(found.id);changed=true}}});if(changed){saveEquipmentCatalog();saveEquipmentAssignments()}}
 function toggleEquipmentMenu(type){const box=document.getElementById("equipmentMenu");if(!box)return;const currentType=box.dataset.type||"";if(!box.classList.contains("hidden")&&currentType===type){box.classList.add("hidden");return}box.dataset.type=type;box.classList.remove("hidden");renderEquipmentMenu(type)}
-function renderEquipmentMenu(type){const box=document.getElementById("equipmentMenu");if(!box)return;const list=equipmentModels.filter(e=>e.type===type).sort((a,b)=>modelName(a).localeCompare(modelName(b),"fr",{sensitivity:"base"}));box.innerHTML='<div class="equipment-menu-header"><span>'+eqTypeLabel(type)+' · Modèles</span><button class="primary small" type="button" onclick="newEquipmentModel(\''+type+'\')">＋ Ajouter un modèle</button></div><input class="model-search" id="modelSearch_'+type+'" placeholder="Rechercher une marque ou un modèle…" oninput="filterEquipmentModels(\''+type+'\',this.value)">'+renderEquipmentModelRows(list)}
-function renderEquipmentModelRows(list){return list.length?list.map(e=>'<button type="button" class="equipment-menu-row" onclick="openEquipment(\''+e.id+'\')"><div class="eq-main"><div class="eq-title">'+esc(modelName(e))+'</div><div class="eq-meta">'+esc(modelClientIds(e.id).length+' client(s) · '+modelDocs(e).length+' document(s)')+'</div></div><div>›</div></button>').join(""):'<div class="equipment-empty">Aucun modèle enregistré.</div>'}
-function filterEquipmentModels(type,q){const box=document.getElementById("equipmentMenu");if(!box)return;const term=String(q||"").toLocaleLowerCase("fr");const list=equipmentModels.filter(e=>e.type===type&&modelName(e).toLocaleLowerCase("fr").includes(term)).sort((a,b)=>modelName(a).localeCompare(modelName(b),"fr",{sensitivity:"base"}));box.innerHTML='<div class="equipment-menu-header"><span>'+eqTypeLabel(type)+' · Modèles</span><button class="primary small" type="button" onclick="newEquipmentModel(\''+type+'\')">＋ Ajouter un modèle</button></div><input class="model-search" id="modelSearch_'+type+'" value="'+esc(q||"")+'" placeholder="Rechercher une marque ou un modèle…" oninput="filterEquipmentModels(\''+type+'\',this.value)">'+renderEquipmentModelRows(list)}
+
+/* Sur mobile, ne jamais détruire le champ de recherche pendant la frappe. */
+let equipmentSearchFocused=false,equipmentSearchGuardUntil=0;
+function equipmentSearchFocus(){equipmentSearchFocused=true}
+function equipmentSearchBlur(){equipmentSearchFocused=false;equipmentSearchGuardUntil=Date.now()+700}
+function equipmentSearchKeyDown(event){if(event.key==="Enter"){event.preventDefault();event.target.blur()}}
+function finishEquipmentSearch(){
+ const el=document.querySelector("#equipmentMenu .equipment-model-search-input");
+ if(el)el.blur();
+}
+function openEquipmentFromSearch(id,event){
+ // Si le clavier vient de disparaître, ignorer le clic potentiellement transmis dessous.
+ if(equipmentSearchFocused||Date.now()<equipmentSearchGuardUntil){
+  if(event){event.preventDefault();event.stopPropagation()}
+  finishEquipmentSearch();
+  return;
+ }
+ openEquipment(id);
+}
+function renderEquipmentMenu(type){
+ const box=document.getElementById("equipmentMenu");if(!box)return;
+ const list=equipmentModels.filter(e=>e.type===type).sort((a,b)=>modelName(a).localeCompare(modelName(b),"fr",{sensitivity:"base"}));
+ const searchId="modelSearch_"+type;
+ equipmentSearchFocused=false;
+ box.dataset.type=type;
+ box.innerHTML='<div class="equipment-menu-header"><span>'+eqTypeLabel(type)+' · Modèles</span><button class="primary small" type="button" onclick="newEquipmentModel(\''+type+'\')">＋ Ajouter un modèle</button></div>'
+ +'<div class="equipment-search-row"><input class="model-search equipment-model-search-input" id="'+searchId+'" type="search" autocomplete="off" enterkeyhint="done" placeholder="Rechercher une marque ou un modèle…" onfocus="equipmentSearchFocus()" onblur="equipmentSearchBlur()" onkeydown="equipmentSearchKeyDown(event)" oninput="filterEquipmentModels(\''+type+'\',this.value)">'
+ +'<button class="secondary small equipment-search-done" type="button" onclick="finishEquipmentSearch()">OK</button></div>'
+ +'<div id="equipmentModelResults" class="equipment-model-results">'+renderEquipmentModelRows(list)+'</div>';
+}
+function renderEquipmentModelRows(list){
+ return list.length?list.map(e=>'<button type="button" class="equipment-menu-row" onclick="openEquipmentFromSearch(\''+e.id+'\',event)"><div class="eq-main"><div class="eq-title">'+esc(modelName(e))+'</div><div class="eq-meta">'+esc(modelClientIds(e.id).length+' client(s) · '+modelDocs(e).length+' document(s)')+'</div></div><div>›</div></button>').join("")
+ :'<div class="equipment-empty">Aucun modèle correspondant.</div>';
+}
+function filterEquipmentModels(type,q){
+ const box=document.getElementById("equipmentMenu");if(!box)return;
+ const term=String(q||"").toLocaleLowerCase("fr");
+ const list=equipmentModels.filter(e=>e.type===type&&modelName(e).toLocaleLowerCase("fr").includes(term))
+  .sort((a,b)=>modelName(a).localeCompare(modelName(b),"fr",{sensitivity:"base"}));
+ const results=box.querySelector("#equipmentModelResults");
+ // Ne remplacer que les résultats : le champ garde le focus, le curseur et le clavier.
+ if(results)results.innerHTML=renderEquipmentModelRows(list);
+}
+
 function newEquipmentModel(type){type=type||"chaudiere";document.body.insertAdjacentHTML("beforeend",'<div class="modal-backdrop" id="modelModal"><div class="modal"><div class="row" style="justify-content:space-between"><h2>'+eqTypeLabel(type)+' — Nouveau modèle</h2><button class="secondary" onclick="closeModelModal()">✕</button></div><div class="modal-grid"><div><label>Type</label><select id="model_type"><option value="chaudiere" '+(type==="chaudiere"?"selected":"")+'>🔥 Chaudière</option><option value="pac_air_air" '+(type==="pac_air_air"?"selected":"")+'>❄️ PAC air/air</option></select></div><div><label>Marque</label><input id="model_brand" placeholder="Ex. Frisquet"></div><div><label>Modèle</label><input id="model_model" placeholder="Ex. Hydroconfort 20"></div><div class="full"><label>Caractéristiques / notes techniques</label><textarea id="model_notes" placeholder="Puissance, fluide, technologie, remarques…"></textarea></div><div class="full"><label>Documentation</label><input id="model_docs" type="file" accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,.txt" multiple onchange="previewModelDocs(this.files)"><div id="modelDocsPreview" class="view-list"></div></div></div><div class="form-actions"><button class="primary" onclick="saveEquipmentModel()">💾 Enregistrer le modèle</button><button class="secondary" onclick="closeModelModal()">Annuler</button></div></div></div>');previewModelDocs([])}
 function closeModelModal(){const m=document.getElementById("modelModal");if(m)m.remove()}
 function previewModelDocs(files){const box=document.getElementById("modelDocsPreview");if(!box)return;const list=Array.from(files||[]);box.innerHTML=list.length?list.map(f=>'<div class="view-item"><span>📄 '+esc(f.name)+'</span><span class="muted small">'+Math.round(f.size/1024)+' Ko</span></div>').join(""):"<div class=\"muted small\">Aucune documentation sélectionnée.</div>"}
@@ -717,7 +791,7 @@ function canRefreshMetierUI(){
  if(page==="client"&&document.getElementById("e_name"))return false;
  const active=document.activeElement;
  if(active&&active.matches&&active.matches("input,textarea,select,[contenteditable='true']")&&
-    active.closest&&active.closest("#client, #equipment, #diagnostic"))return false;
+    active.closest&&active.closest("#client, #equipment, #diagnostic, #equipmentMenu"))return false;
  return true;
 }
 function refreshMetierFromCloud(){
