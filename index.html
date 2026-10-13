@@ -122,16 +122,16 @@ header{background:linear-gradient(90deg,#140e24,#201432 68%,#160f2c);border-bott
 </div>
 </div><div id="clientMenu" class="client-menu hidden"></div><div id="equipmentMenu" class="equipment-menu hidden"></div><div id="results"></div></section>
 <section id="client" class="hidden">
-<div class="row" style="justify-content:space-between;margin-bottom:12px"><button class="secondary" onclick="goHome()">← Recherche</button>
+<div class="row" style="justify-content:space-between;margin-bottom:12px"><button class="secondary" onclick="appGoBack()">← Retour</button>
 <div class="row"><button class="primary" onclick="editClient()">✏️ Modifier</button></div></div>
 <div id="clientBody"></div>
 </section>
 <section id="diagnostic" class="hidden">
-<div class="row" style="justify-content:space-between;margin-bottom:12px"><button class="secondary" onclick="closeDiagnosticPage()">← Accueil</button><button class="primary" onclick="newDiagnosticBrand()">＋ Nouvelle marque</button></div>
+<div class="row" style="justify-content:space-between;margin-bottom:12px"><button class="secondary" onclick="appGoBack()">← Retour</button><button class="primary" onclick="newDiagnosticBrand()">＋ Nouvelle marque</button></div>
 <div id="diagnosticBody"></div>
 </section>
 <section id="equipment" class="hidden">
-<div class="row" style="justify-content:space-between;margin-bottom:12px"><button class="secondary" onclick="closeEquipmentPage()">← Retour</button><button class="primary" onclick="editEquipmentModel(currentEquipmentId)">✏️ Modifier le modèle</button></div>
+<div class="row" style="justify-content:space-between;margin-bottom:12px"><button class="secondary" onclick="appGoBack()">← Retour</button><button class="primary" onclick="editEquipmentModel(currentEquipmentId)">✏️ Modifier le modèle</button></div>
 <div id="equipmentPageBody"></div>
 </section></main>
 
@@ -415,6 +415,7 @@ function deleteDiagnosticDocument(id,index){const d=diagnosticBrands.find(x=>x.i
 function goHome(){document.getElementById("client").classList.add("hidden");document.getElementById("equipment").classList.add("hidden");document.getElementById("diagnostic").classList.add("hidden");document.getElementById("home").classList.remove("hidden");if(window.refreshMetierFromCloud)window.refreshMetierFromCloud();search()}
 loadEquipmentCatalog();loadDiagnostics();renderDiagnosticMenu();document.getElementById("search").addEventListener("input",search);document.getElementById("clientSort").addEventListener("change",search);search();
 </script>
+<script src="./navigation.js"></script>
 <!-- V2 CLOUD SYNC ENGINE
      Backend: Supabase Postgres + Auth + Realtime + Storage.
      IMPORTANT: only the publishable/anon key belongs in this browser file.
