@@ -28,7 +28,12 @@ function visible(){
 }
 async function cloud(){
  if(typeof window.metierMediaSupabase!=="function")return null;
- return await window.metierMediaSupabase();
+ const client=await window.metierMediaSupabase();
+ if(!client){
+  lastError="Connexion Supabase requise sur cet appareil pour partager les pièces jointes.";
+  return null;
+ }
+ return client;
 }
 function list(scope,id){
  const rem=cache.get(group(scope,id))||new Map(),out=new Map(rem),q=parse(),p=prefix(scope,id);
