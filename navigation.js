@@ -193,6 +193,14 @@
       if(!file)return;
       if(button){button.disabled=true;button.textContent='⌛ Enregistrement…';}
       try{
+        if(typeof window.metierMediaAddFiles==="function"){
+          const ok=await window.metierMediaAddFiles({
+            scope:"diagnostic",ownerId:brandId,kind:"photo",codeId:null,files:[file]
+          });
+          if(!ok)console.warn("Photo diagnostic conservée localement en attente de synchronisation.");
+          return;
+        }
+        // Ancienne installation sans module : conserver la photo localement.
         const data=await compressDiagnosticPhoto(file);
         const brand=diagnosticBrands.find(d=>String(d.id)===String(brandId));
         if(!brand)throw new Error('Cette marque n’existe plus.');
