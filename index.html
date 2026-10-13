@@ -496,6 +496,27 @@ function deleteDiagnosticDocument(id,index){const d=diagnosticBrands.find(x=>x.i
 function goHome(){document.getElementById("client").classList.add("hidden");document.getElementById("equipment").classList.add("hidden");document.getElementById("diagnostic").classList.add("hidden");document.getElementById("home").classList.remove("hidden");if(window.refreshMetierFromCloud)window.refreshMetierFromCloud();search()}
 loadEquipmentCatalog();loadDiagnostics();renderDiagnosticMenu();document.getElementById("search").addEventListener("input",search);document.getElementById("clientSort").addEventListener("change",search);search();
 </script>
+<style id="pending-notifications-palette">
+/* Couleur de l'accueil basée uniquement sur l'onglet « Non traitées ». */
+#notificationsButton[data-pending-state="empty"]{background:#166534!important;border-color:#4ade80!important;color:#fff!important}
+#notificationsButton[data-pending-state="has-pending"]{background:#991b1b!important;border-color:#f87171!important;color:#fff!important}
+#notificationsButton[data-pending-state="empty"] #notificationCount{background:#15803d!important;color:#fff!important}
+#notificationsButton[data-pending-state="has-pending"] #notificationCount{background:#b91c1c!important;color:#fff!important}
+</style>
+<script>
+(function(){
+  // Applique la couleur dès l'ouverture, avant même le chargement de notifications.js.
+  try{
+    var all=JSON.parse(localStorage.getItem("metier_notifications_pieces_v1")||"{}");
+    var values=(all&&typeof all==="object"&&!Array.isArray(all))?Object.values(all):[];
+    var count=values.filter(function(n){return n&&n.id&&!n.deleted&&n.status!=="treated"&&n.status!=="sav_done";}).length;
+    var state=count>0?"has-pending":"empty";
+    var b=document.getElementById("notificationsButton"),n=document.getElementById("notificationCount");
+    if(b)b.setAttribute("data-pending-state",state);
+    if(n){n.setAttribute("data-pending-state",state);n.textContent=String(count);}
+  }catch(e){}
+})();
+</script>
 <script src="./navigation.js"></script>
 <script src="./notifications.js"></script>
 <!-- V2 CLOUD SYNC ENGINE
