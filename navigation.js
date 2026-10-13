@@ -115,3 +115,129 @@
   if(routeNow())restoreRoute(routeNow());
   else replaceRoute("home");
 })();
+
+/* Chabanal et fils — retour accueil par le logo et appareil photo dans chaque marque. */
+(function(){
+  'use strict';
+
+  // Le logo est un raccourci de navigation, y compris au clavier.
+  function initHomeLogo(){
+    const logo=document.querySelector('.brand-logo');
+    if(!logo||logo.dataset.homeLinkReady==='1')return;
+    logo.dataset.homeLinkReady='1';
+    logo.setAttribute('role','button');
+    logo.setAttribute('tabindex','0');
+    logo.setAttribute('aria-label','Revenir à l’accueil');
+    logo.setAttribute('title','Retour à l’accueil');
+    const home=()=>{
+      if(typeof window.goHome==='function')window.goHome();
+      window.scrollTo({top:0,behavior:'auto'});
+    };
+    logo.addEventListener('click',home);
+    logo.addEventListener('keydown',e=>{
+      if(e.key==='Enter'||e.key===' '){e.preventDefault();home();}
+    });
+    const css=document.createElement('style');
+    css.textContent='.brand-logo{cursor:pointer;touch-action:manipulation}.brand-logo:focus-visible{outline:2px solid #69b2ff;outline-offset:4px;border-radius:8px}.diagnostic-camera-action{white-space:nowrap}';
+    document.head.appendChild(css);
+  }
+
+  // Réduction avant sauvegarde : les photos de téléphone seraient trop lourdes
+  // pour le stockage local et la synchronisation des diagnostics.
+  function compressDiagnosticPhoto(file){
+    return new Promise((resolve,reject)=>{
+      if(!file||!file.type.startsWith('image/')){
+        reject(new Error('Le fichier sélectionné n’est pas une image.'));return;
+      }
+      const url=URL.createObjectURL(file);
+      const img=new Image();
+      img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Image illisible ou format non pris en charge.'));};
+      img.onload=()=>{
+        URL.revokeObjectURL(url);
+        try{
+          const maxSide=1600;
+          const scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));
+          const canvas=document.createElement('canvas');
+          canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));
+          canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+          const ctx=canvas.getContext('2d');
+          if(!ctx)throw new Error('Compression non disponible.');
+          ctx.drawImage(img,0,0,canvas.width,canvas.height);
+          let data=canvas.toDataURL('image/jpeg',0.75);
+          if(data.length>1050000){
+            canvas.width=Math.max(1,Math.round(img.naturalWidth*Math.min(1,1100/Math.max(img.naturalWidth,img.naturalHeight))));
+            canvas.height=Math.max(1,Math.round(img.naturalHeight*Math.min(1,1100/Math.max(img.naturalWidth,img.naturalHeight))));
+            canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+            data=canvas.toDataURL('image/jpeg',0.68);
+          }
+          if(!data.startsWith('data:image/jpeg;base64,'))throw new Error('Conversion de la photo impossible.');
+          resolve(data);
+        }catch(err){reject(err);}
+      };
+      img.src=url;
+    });
+  }
+
+  function takeBrandPhoto(brandId,button){
+    const input=document.createElement('input');
+    input.type='file';
+    input.accept='image/*';
+    input.setAttribute('capture','environment');
+    input.setAttribute('aria-label','Prendre une photo pour cette marque');
+    input.style.cssText='position:fixed;left:-10000px;top:0;width:1px;height:1px;opacity:0';
+    document.body.appendChild(input);
+    input.addEventListener('cancel',()=>input.remove(),{once:true});
+    input.addEventListener('change',async()=>{
+      const file=input.files&&input.files[0];
+      input.remove();
+      if(!file)return;
+      if(button){button.disabled=true;button.textContent='⌛ Enregistrement…';}
+      try{
+        const data=await compressDiagnosticPhoto(file);
+        const brand=diagnosticBrands.find(d=>String(d.id)===String(brandId));
+        if(!brand)throw new Error('Cette marque n’existe plus.');
+        const date=new Date();
+        const photo={name:'Photo diagnostic '+date.toLocaleString('fr-FR').replace(/[,/:]/g,'-')+'.jpg',type:'image/jpeg',size:Math.round((data.length-data.indexOf(',')-1)*.75),data};
+        if(!Array.isArray(brand.documents))brand.documents=[];
+        brand.documents.push(photo);
+        if(!saveDiagnostics()){
+          brand.documents.pop();
+          return;
+        }
+        if(currentDiagnosticId===brandId&&typeof renderDiagnosticBrand==='function')renderDiagnosticBrand();
+      }catch(e){alert('Impossible d’enregistrer la photo : '+(e&&e.message?e.message:'erreur inconnue'));}
+      finally{if(button&&button.isConnected){button.disabled=false;button.textContent='📷 Prendre une photo';}}
+    },{once:true});
+    input.click();
+  }
+
+  // La page Diagnostic est reconstruite après chaque modification ou synchro :
+  // rattacher le bouton à chaque nouveau rendu sans modifier le moteur métier.
+  function addCameraAction(){
+    const body=document.getElementById('diagnosticBody');
+    if(!body||!currentDiagnosticId||!document.getElementById('diagnostic')||document.getElementById('diagnostic').classList.contains('hidden'))return;
+    const title=Array.from(body.querySelectorAll('h3')).find(h=>h.textContent.includes('Documents de la marque'));
+    if(!title)return;
+    const toolbar=title.parentElement;
+    if(!toolbar||toolbar.querySelector('.diagnostic-camera-action'))return;
+    const id=currentDiagnosticId;
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='secondary diagnostic-camera-action';
+    button.textContent='📷 Prendre une photo';
+    button.title='Ouvrir l’appareil photo du téléphone et enregistrer dans cette marque';
+    button.addEventListener('click',()=>takeBrandPhoto(id,button));
+    toolbar.appendChild(button);
+  }
+
+  function init(){
+    initHomeLogo();
+    const body=document.getElementById('diagnosticBody');
+    if(body){
+      new MutationObserver(addCameraAction).observe(body,{childList:true});
+      addCameraAction();
+    }
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});
+  else init();
+})();
