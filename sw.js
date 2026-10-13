@@ -1,5 +1,5 @@
-const CACHE='chabanal-v1-1-navigation-20261013';
-const SHELL=['./','./index.html','./manifest.webmanifest','./navigation.js','./icon-192.png','./icon-512.png','./fonds/01.webp','./fonds/02.webp','./fonds/03.webp','./fonds/04.webp','./fonds/05.webp','./fonds/06.webp','./fonds/07.webp','./fonds/08.webp','./fonds/09.webp','./fonds/10.webp','./fonds/11.webp','./fonds/12.webp'];
+const CACHE='chabanal-v1-1-notifications-20261013';
+const SHELL=['./','./index.html','./manifest.webmanifest','./navigation.js','./notifications.js','./icon-192.png','./icon-512.png','./fonds/01.webp','./fonds/02.webp','./fonds/03.webp','./fonds/04.webp','./fonds/05.webp','./fonds/06.webp','./fonds/07.webp','./fonds/08.webp','./fonds/09.webp','./fonds/10.webp','./fonds/11.webp','./fonds/12.webp'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(Promise.all([caches.keys().then(names=>Promise.all(names.filter(name=>name.startsWith('chabanal-')&&name!==CACHE).map(name=>caches.delete(name)))),self.clients.claim()])));
 self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;const u=new URL(e.request.url);if(u.origin!==location.origin)return;e.respondWith(fetch(e.request).then(r=>{const c=r.clone();caches.open(CACHE).then(x=>x.put(e.request,c));return r}).catch(()=>caches.match(e.request).then(r=>r||caches.match('./index.html'))));});
