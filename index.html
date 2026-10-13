@@ -98,6 +98,20 @@ header{background:linear-gradient(90deg,#140e24,#201432 68%,#160f2c);border-bott
 .piece-filter-active[hidden]{display:none!important}
 .piece-notification-highlight{border-color:#e4ac47!important;box-shadow:0 0 0 2px rgba(231,166,68,.3)}
 @media(max-width:390px){.piece-tab{flex:1 1 85px;padding:10px 6px;font-size:12px}}
+
+/* v1.1 : ratio coloré et statistiques compactes sur les fiches clients. */
+#clientBody .client-ratio.client-ratio-ok{color:#4ade80!important}
+#clientBody .client-ratio.client-ratio-high{color:#fb7185!important}
+#clientBody .client-ratio-label{font-size:11px;line-height:1.25}
+#clientBody .client-summary-stats{gap:7px;margin-top:9px}
+#clientBody .client-summary-stats .card{padding:9px 10px;border-radius:10px;min-width:0}
+#clientBody .client-summary-stats .card .muted{font-size:11px;line-height:1.2}
+#clientBody .client-summary-stats .card .stat{font-size:19px;line-height:1.25;margin-top:3px}
+#clientBody .client-summary-stats .card b{font-size:12px;font-weight:650;overflow-wrap:anywhere}
+.piece-notification-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:7px}
+.piece-notification-delete{padding:7px 10px;background:rgba(128,29,29,.2);color:#ffc2c2;border:1px solid #913e3e;font-size:12px}
+.piece-notification-delete:hover{background:rgba(128,29,29,.4)}
+@media(max-width:650px){#clientBody .client-summary-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#clientBody .client-summary-stats .card{padding:8px}}
 </style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
@@ -264,7 +278,7 @@ function openClientById(id){const box=document.getElementById("clientMenu");if(b
 function openClient(id){current=clients.find(c=>c.id===id);if(!current)return;document.getElementById("home").classList.add("hidden");document.getElementById("equipment").classList.add("hidden");document.getElementById("diagnostic").classList.add("hidden");document.getElementById("client").classList.remove("hidden");renderClient();requestAnimationFrame(()=>window.scrollTo(0,0))}
 function renderClient(){
 const c=current,r=ratio(c),ints=[...c.interventions].sort((a,b)=>b.iso.localeCompare(a.iso)),first=ints.length?ints[ints.length-1].date:"—",last=ints.length?ints[0].date:"—";
-document.getElementById("clientBody").innerHTML='<div class="panel"><div id="clientOrderAlertSlot" data-client-id="'+esc(c.id)+'">'+(window.clientOrderBadgeHTML?window.clientOrderBadgeHTML(c.id):"")+'</div><div class="row" style="justify-content:space-between"><div><h2>'+esc(c.name)+'</h2><div>'+addressLink(c)+(c.addressComplement?'<div class="muted small">↳ '+esc(c.addressComplement)+'</div>':'')+'</div><div class="contact-list">'+(c.phone?'<a class="contact-link" href="tel:'+encodeURIComponent(c.phone)+'">📞 '+esc(c.phone)+'</a>':'<span class="muted">📞 Téléphone non renseigné</span>')+(c.email?'<a class="contact-link" href="mailto:'+encodeURIComponent(c.email)+'">✉️ '+esc(c.email)+'</a>':'<span class="muted">✉️ Email non renseigné</span>')+'</div><div style="margin-top:12px"><span class="muted small">Mois d’entretien</span><div><b>'+(c.maintenanceMonth?(Number(c.maintenanceMonth)+" - "+clientMonthLabel(c.maintenanceMonth).split(" - ")[1]):"Non renseigné")+'</b></div></div><div style="text-align:right"><div class="stat">'+(r||"—")+'</div><div class="muted">interventions/an</div></div></div><div class="grid section"><div class="card"><div class="muted">Interventions</div><div class="stat">'+c.interventions.length+'</div></div><div class="card"><div class="muted">Première</div><b>'+first+'</b></div><div class="card"><div class="muted">Dernière</div><b>'+last+'</b></div><div class="card"><div class="muted">Pièces jointes importées</div><b>'+c.attachments+'</b></div></div></div>'+
+document.getElementById("clientBody").innerHTML='<div class="panel"><div id="clientOrderAlertSlot" data-client-id="'+esc(c.id)+'">'+(window.clientOrderBadgeHTML?window.clientOrderBadgeHTML(c.id):"")+'</div><div class="row" style="justify-content:space-between"><div><h2>'+esc(c.name)+'</h2><div>'+addressLink(c)+(c.addressComplement?'<div class="muted small">↳ '+esc(c.addressComplement)+'</div>':'')+'</div><div class="contact-list">'+(c.phone?'<a class="contact-link" href="tel:'+encodeURIComponent(c.phone)+'">📞 '+esc(c.phone)+'</a>':'<span class="muted">📞 Téléphone non renseigné</span>')+(c.email?'<a class="contact-link" href="mailto:'+encodeURIComponent(c.email)+'">✉️ '+esc(c.email)+'</a>':'<span class="muted">✉️ Email non renseigné</span>')+'</div><div style="margin-top:12px"><span class="muted small">Mois d’entretien</span><div><b>'+(c.maintenanceMonth?(Number(c.maintenanceMonth)+" - "+clientMonthLabel(c.maintenanceMonth).split(" - ")[1]):"Non renseigné")+'</b></div></div><div style="text-align:right"><div class="stat client-ratio '+(r?(Number(r)<=1.5?"client-ratio-ok":"client-ratio-high"):"")+'">'+(r||"—")+'</div><div class="muted client-ratio-label">interventions/an</div></div></div><div class="grid section client-summary-stats"><div class="card"><div class="muted">Interventions</div><div class="stat">'+c.interventions.length+'</div></div><div class="card"><div class="muted">Première</div><b>'+first+'</b></div><div class="card"><div class="muted">Dernière</div><b>'+last+'</b></div><div class="card"><div class="muted">Pièces jointes importées</div><b>'+c.attachments+'</b></div></div></div>'+
 '<div class="panel section"><div class="row" style="justify-content:space-between"><h3>🔧 Équipements du client</h3><div class="row"><button class="secondary" onclick="assignEquipment(\'chaudiere\')">＋ Chaudière</button><button class="secondary" onclick="assignEquipment(\'pac_air_air\')">＋ PAC air/air</button></div></div><div id="clientEquipmentList"></div></div>'+
 '<div class="panel section"><div class="row" style="justify-content:space-between"><h3>🛠 Historique des interventions</h3><button class="primary" onclick="newIntervention()">＋ Nouvelle intervention</button></div><div class="timeline">'+(ints.map(x=>'<div class="event"><strong>'+esc(x.date)+'</strong><div>'+esc(x.description)+'</div><button class="secondary small" style="margin-top:7px" onclick="editIntervention(\''+x.iso+'\')">Modifier</button></div>').join("")||'<p class="muted">Aucune intervention datée.</p>')+'</div></div>'+
 '<div class="panel section"><div class="row" style="justify-content:space-between"><h3>📷 Photos du client</h3><div class="row"><button type="button" class="primary" onclick="openCamera()">📷 Prendre une photo</button><button type="button" class="secondary" onclick="openGallery()">🖼️ Importer</button></div></div><input id="photoCamera" type="file" accept="image/*" capture="environment" style="display:none" onchange="addPhotos(this.files)"><input id="photoImport" type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(this.files)"><div id="photoGallery" class="photo-grid"></div><p class="muted small">Les photos sont enregistrées localement dans ce navigateur et restent associées à cette fiche client.</p></div><div class="panel section"><h3>📝 Notes originales</h3><details><summary>Afficher la note Keep importée</summary><pre style="white-space:pre-wrap;font:inherit">'+esc(c.notes)+'</pre></details></div>';
@@ -612,7 +626,8 @@ function changedPatch(k,oldRaw,newRaw,previous){
    const original=Object.prototype.hasOwnProperty.call(a,id)?a[id]:null;
    const updated=Object.prototype.hasOwnProperty.call(b,id)?b[id]:null;
    if(sameJSON(original,updated))continue;
-   const was=patch.changes[id]?.before??original;
+   const earlier=patch.changes[id];
+   const was=earlier&&Object.prototype.hasOwnProperty.call(earlier,"before")?earlier.before:original;
    if(sameJSON(was,updated))delete patch.changes[id];
    else patch.changes[id]={before:was,after:updated};
   }
@@ -698,6 +713,11 @@ function mergePending(k,patch,remote){
   const out=JSON.parse(JSON.stringify(remote));
   for(const [id,change] of Object.entries(patch.changes||{})){
    const theirs=Object.prototype.hasOwnProperty.call(out,id)?out[id]:null;
+   const next=change.after;
+   // Une suppression est un marqueur permanent : elle gagne sur une mise à jour
+   // de statut concurrente et ne peut pas ressusciter au prochain échange cloud.
+   if(theirs&&theirs.deleted){out[id]=theirs;continue;}
+   if(next&&next.deleted){out[id]=next;continue;}
    if(sameJSON(theirs,change.after))continue;
    if(sameJSON(theirs,change.before)){
     if(change.after===null)delete out[id];else out[id]=change.after;

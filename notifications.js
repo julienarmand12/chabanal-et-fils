@@ -15,14 +15,14 @@ const saveAll=data=>{
   catch(e){alert("Enregistrement des notifications impossible : espace de stockage insuffisant.");return false;}
 };
 const normalizedStatus=n=>n.status==="sav_done"?"sav_done":n.status==="treated"?"treated":"pending";
-const openOrders=clientId=>Object.values(getAll()).filter(n=>n&&String(n.clientId)===String(clientId)&&normalizedStatus(n)!=="sav_done");
+const openOrders=clientId=>Object.values(getAll()).filter(n=>n&&!n.deleted&&String(n.clientId)===String(clientId)&&normalizedStatus(n)!=="sav_done");
 let tab="pending";
 const tabSearch={pending:"",treated:"",sav_done:""};
 let clientFilter=null;
 let focusNotification=null;
 let focusClient=null;
 function countOpen(){
-  return Object.values(getAll()).filter(n=>n&&normalizedStatus(n)==="pending").length;
+  return Object.values(getAll()).filter(n=>n&&!n.deleted&&normalizedStatus(n)==="pending").length;
 }
 function updateCount(){
   const count=countOpen(),badge=document.getElementById("notificationCount"),button=document.getElementById("notificationsButton");
@@ -50,7 +50,7 @@ window.clientOrderBadgeHTML=function(clientId){
     '🔔 Commande en cours <span data-count class="notifications-count">'+count+'</span></button></div>';
 };
 function availableNotifications(){
-  return Object.values(getAll()).filter(n=>n&&n.id).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));
+  return Object.values(getAll()).filter(n=>n&&n.id&&!n.deleted).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));
 }
 function filterForTab(){
   const search=normalize(tabSearch[tab]);
@@ -78,7 +78,9 @@ function renderList(){
     const dateInfo=tab==="sav_done"&&n.savCompletedAt?"SAV terminé le "+new Date(n.savCompletedAt).toLocaleString("fr-FR"):
       tab==="treated"&&n.treatedAt?"Traitée le "+new Date(n.treatedAt).toLocaleString("fr-FR"):"Créée le "+created;
     return '<article class="piece-notification" id="piece-row-'+safe(n.id)+'" data-order-id="'+safe(n.id)+'">'+
-      '<div class="row" style="justify-content:space-between;align-items:flex-start"><strong>'+safe(n.clientName||"Client")+'</strong>'+action+'</div>'+
+      '<div class="row" style="justify-content:space-between;align-items:flex-start"><strong>'+safe(n.clientName||"Client")+'</strong>'+
+      '<div class="piece-notification-actions">'+action+
+      '<button type="button" class="piece-notification-delete" data-delete-notification-id="'+safe(n.id)+'" aria-label="Supprimer la notification de '+safe(n.clientName||"Client")+'">🗑 Supprimer</button></div></div>'+
       '<div class="muted small">Commande de pièce'+(date?' · Intervention du '+safe(date):"")+'</div>'+
       '<div class="piece-notification-description">'+safe(n.description||"").replace(/\n/g,"<br>")+'</div>'+
       '<div class="muted small">'+safe(dateInfo)+'</div></article>';
@@ -140,7 +142,9 @@ window.openNotificationsCenter=function(options={}){
   overlay.addEventListener("click",function(e){
     if(e.target===overlay){window.closeNotificationsCenter();return;}
     const action=e.target.closest("[data-next-status]");
-    if(action){window.advancePieceNotification(action.dataset.notificationId,action.dataset.nextStatus);}
+    if(action){window.advancePieceNotification(action.dataset.notificationId,action.dataset.nextStatus);return;}
+    const del=e.target.closest("[data-delete-notification-id]");
+    if(del){window.deletePieceNotification(del.dataset.deleteNotificationId);return;}
     if(e.target.closest("#clearClientNotificationFilter")){clientFilter=null;focusClient=null;renderAll();}
   });
   document.body.appendChild(overlay);
@@ -169,7 +173,7 @@ window.openClientOrders=function(clientId){
   window.openNotificationsCenter({clientId,tab:normalizedStatus(target),notificationId:target.id});
 };
 window.advancePieceNotification=function(id,next){
-  const data=getAll(),n=data[id];if(!n)return;
+  const data=getAll(),n=data[id];if(!n||n.deleted)return;
   const status=normalizedStatus(n);
   if(status==="pending"&&next==="treated"){
     data[id]={...n,status:"treated",treatedAt:n.treatedAt||new Date().toISOString()};
@@ -177,6 +181,17 @@ window.advancePieceNotification=function(id,next){
     data[id]={...n,status:"sav_done",treatedAt:n.treatedAt||new Date().toISOString(),savCompletedAt:new Date().toISOString()};
   }else return;
   if(saveAll(data)){updateCount();updateClientBadge();renderAll();}
+};
+window.deletePieceNotification=function(id){
+  const data=getAll(),n=data[id];
+  if(!n||n.deleted)return false;
+  const customer=n.clientName||"ce client";
+  if(!window.confirm("Supprimer définitivement cette notification de « "+customer+" » ?\n\nCette action la retirera des trois onglets et sera synchronisée sur les autres appareils."))return false;
+  // Un marqueur sans données client empêche le retour d'une copie ancienne au cloud.
+  data[id]={id,deleted:true,deletedAt:new Date().toISOString()};
+  if(!saveAll(data))return false;
+  window.refreshNotificationsCenter();
+  return true;
 };
 // Ancien nom conservé pour les appels éventuels de l'application.
 window.markPieceNotification=function(id){window.advancePieceNotification(id,"treated");};
@@ -239,14 +254,16 @@ window.startInterventionWizard=function(client,onSave){
       };
       stage.querySelector("#wizardDetailsBack").onclick=()=>{step="order";draw();};
     }else if(step==="intervention"){
+      // Le texte validé pour les pièces sert de saisie initiale de l'intervention.
+      const prefill=orderId?(orderDescription||getAll()[orderId]?.description||""):"";
       stage.innerHTML='<p class="muted">'+(wantOrder?"4.":"3.")+' Description de l’intervention</p>'+
         (orderId?'<p class="piece-saved-note">✓ Commande enregistrée dans les notifications.</p>':"")+
         '<label for="wizardInterventionDescription">Description de l’intervention</label>'+
-        '<textarea id="wizardInterventionDescription" rows="5" placeholder="Décrire l’intervention réalisée"></textarea>'+
+        '<textarea id="wizardInterventionDescription" rows="5" placeholder="Décrire l’intervention réalisée">'+safe(prefill)+'</textarea>'+
         '<div class="form-actions"><button type="button" class="primary" id="wizardSaveIntervention">💾 Enregistrer l’intervention</button>'+
         (!orderId?'<button type="button" class="secondary" id="wizardInterventionBack">← Retour</button>':"")+'</div>';
       // Le texte de commande validé est recopié dans la description, éditable par le technicien.
-      if(orderId)stage.querySelector("#wizardInterventionDescription").value=orderDescription;
+      if(orderId)stage.querySelector("#wizardInterventionDescription").value=prefill;
       stage.querySelector("#wizardSaveIntervention").onclick=()=>{
         const description=stage.querySelector("#wizardInterventionDescription").value;
         const success=onSave({date:normalDate(iso),iso,description});
