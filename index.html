@@ -243,7 +243,18 @@ function norm(s){return String(s||"").toLowerCase().normalize("NFD").replace(/[\
 function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
 function mapsUrl(c){const q=[c.address,c.postal,c.city].filter(Boolean).join(", ");return "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(q)}
 function addressLink(c){const q=[c.address,c.postal,c.city].filter(Boolean).join(", ");return q?'<a class="contact-link" href="'+mapsUrl(c)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">📍 '+esc(q)+'</a>':'<span class="muted">Adresse non renseignée</span>'}
-function ratio(c){const a=c.interventions.map(x=>new Date(x.iso)).filter(x=>!isNaN(x));if(a.length<2)return "";const min=Math.min(...a.map(x=>x.getTime())),max=Math.max(...a.map(x=>x.getTime()));const years=(max-min)/(365.2425*24*3600*1000);return years>0?(c.interventions.length/years).toFixed(2):""}
+function ratio(c){
+ const dates=(c.interventions||[]).map(x=>new Date(x.iso)).filter(x=>!isNaN(x.getTime()));
+ if(!dates.length)return "";
+ const first=new Date(Math.min(...dates.map(x=>x.getTime())));
+ const last=new Date(Math.max(...dates.map(x=>x.getTime())));
+ // Années complètes écoulées, arrondies à l'entier inférieur.
+ let years=last.getUTCFullYear()-first.getUTCFullYear();
+ if(last.getUTCMonth()<first.getUTCMonth()||
+    (last.getUTCMonth()===first.getUTCMonth()&&last.getUTCDate()<first.getUTCDate()))years--;
+ // En dessous d'un an, utiliser un an pour éviter une division par zéro.
+ return (c.interventions.length/Math.max(1,years)).toFixed(2);
+}
 function clientMonthLabel(v){const months=["01 - Janvier","02 - Février","03 - Mars","04 - Avril","05 - Mai","06 - Juin","07 - Juillet","08 - Août","09 - Septembre","10 - Octobre","11 - Novembre","12 - Décembre"];const n=Number(v);return n>=1&&n<=12?months[n-1]:"Non renseigné"}
 function sortedClients(list,mode){const a=[...list];if(mode==="month")return a.sort((x,y)=>{const mx=Number(x.maintenanceMonth)||99,my=Number(y.maintenanceMonth)||99;if(mx!==my)return mx-my;return String(x.name||"").localeCompare(String(y.name||""),"fr",{sensitivity:"base"})});return a.sort((x,y)=>String(x.name||"").localeCompare(String(y.name||""),"fr",{sensitivity:"base"}))}
 function search(){renderClientMenu();const q=norm(document.getElementById("search").value),mode=document.getElementById("clientSort")?.value||"alpha",out=document.getElementById("results");document.getElementById("clientCount").textContent=clients.length;out.classList.toggle("hidden",!q);if(!q){out.replaceChildren();return}const hits=sortedClients(clients.filter(c=>[c.name,c.address,c.postal,c.city,c.phone,c.email].some(x=>norm(x).includes(q))),mode);out.innerHTML=hits.length?'<p class="muted">'+hits.length+' résultat(s)</p>'+hits.map(c=>'<div class="card click" onclick="openClient(\''+c.id+'\')" style="margin-bottom:10px"><div class="row" style="justify-content:space-between"><div><h3 style="margin-bottom:4px">'+esc(c.name)+'</h3><div>'+addressLink(c)+'</div><div>'+(c.phone?'<a class="contact-link" href="tel:'+encodeURIComponent(c.phone)+'" onclick="event.stopPropagation()">📞 '+esc(c.phone)+'</a>':'<span class="muted">Téléphone non renseigné</span>')+(c.email?'<br><a class="contact-link" href="mailto:'+encodeURIComponent(c.email)+'" onclick="event.stopPropagation()">✉️ '+esc(c.email)+'</a>':'')+'</div></div><div><span class="badge">'+(mode==="month"&&c.maintenanceMonth?(Number(c.maintenanceMonth)+' - '+esc(clientMonthLabel(c.maintenanceMonth).split(' - ')[1])):esc(c.maintenanceMonth?clientMonthLabel(c.maintenanceMonth):"Mois non renseigné"))+'</span> <span class="badge">'+c.interventions.length+' interventions</span>'+(ratio(c)?' <span class="badge">'+ratio(c)+' / an</span>':'')+'</div></div></div>').join(""):'<div class="panel">Aucun client trouvé.</div>'}

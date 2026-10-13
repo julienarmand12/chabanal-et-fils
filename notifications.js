@@ -199,7 +199,7 @@ window.startInterventionWizard=function(client,onSave){
     '<div id="wizardStage"></div></div>';
   document.body.appendChild(overlay);
   const stage=overlay.querySelector("#wizardStage");
-  let iso="",wantOrder=false,orderId=null,step="date";
+  let iso="",wantOrder=false,orderId=null,orderDescription="",step="date";
   const close=()=>overlay.remove();
   const normalDate=d=>{const [y,m,day]=d.split("-");return day+"/"+m+"/"+y;};
   const t=new Date();const defaultDate=[t.getFullYear(),String(t.getMonth()+1).padStart(2,"0"),String(t.getDate()).padStart(2,"0")].join("-");
@@ -234,6 +234,7 @@ window.startInterventionWizard=function(client,onSave){
         const description=input.value.trim();if(!description){input.setCustomValidity("Indiquez la pièce à commander.");input.reportValidity();input.setCustomValidity("");return;}
         orderId=window.createPieceNotification({clientId:client.id,clientName:client.name,description,interventionDate:normalDate(iso)});
         if(!orderId)return;
+        orderDescription=description;
         step="intervention";draw();
       };
       stage.querySelector("#wizardDetailsBack").onclick=()=>{step="order";draw();};
@@ -244,6 +245,8 @@ window.startInterventionWizard=function(client,onSave){
         '<textarea id="wizardInterventionDescription" rows="5" placeholder="Décrire l’intervention réalisée"></textarea>'+
         '<div class="form-actions"><button type="button" class="primary" id="wizardSaveIntervention">💾 Enregistrer l’intervention</button>'+
         (!orderId?'<button type="button" class="secondary" id="wizardInterventionBack">← Retour</button>':"")+'</div>';
+      // Le texte de commande validé est recopié dans la description, éditable par le technicien.
+      if(orderId)stage.querySelector("#wizardInterventionDescription").value=orderDescription;
       stage.querySelector("#wizardSaveIntervention").onclick=()=>{
         const description=stage.querySelector("#wizardInterventionDescription").value;
         const success=onSave({date:normalDate(iso),iso,description});
