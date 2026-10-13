@@ -1,92 +1,191 @@
-/* Chabanal v1.1 — commandes de pièces et centre de notifications. */
+/* Chabanal et fils v1.1 — commandes et centre de notifications à trois étapes. */
 (function(){
 "use strict";
 const KEY="metier_notifications_pieces_v1";
 const safe=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const normalize=s=>String(s??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("fr").trim();
 const getAll=()=>{
   try{
-    const v=JSON.parse(localStorage.getItem(KEY)||"{}");
-    return v&&typeof v==="object"&&!Array.isArray(v)?v:{};
+    const value=JSON.parse(localStorage.getItem(KEY)||"{}");
+    return value&&typeof value==="object"&&!Array.isArray(value)?value:{};
   }catch(e){return {};}
 };
 const saveAll=data=>{
   try{localStorage.setItem(KEY,JSON.stringify(data));return true;}
   catch(e){alert("Enregistrement des notifications impossible : espace de stockage insuffisant.");return false;}
 };
+const normalizedStatus=n=>n.status==="sav_done"?"sav_done":n.status==="treated"?"treated":"pending";
+const openOrders=clientId=>Object.values(getAll()).filter(n=>n&&String(n.clientId)===String(clientId)&&normalizedStatus(n)!=="sav_done");
 let tab="pending";
+const tabSearch={pending:"",treated:"",sav_done:""};
+let clientFilter=null;
+let focusNotification=null;
+let focusClient=null;
 function countOpen(){
-  return Object.values(getAll()).filter(n=>n&&n.status!=="treated").length;
+  return Object.values(getAll()).filter(n=>n&&normalizedStatus(n)==="pending").length;
 }
 function updateCount(){
   const count=countOpen(),badge=document.getElementById("notificationCount"),button=document.getElementById("notificationsButton");
   if(badge)badge.textContent=String(count);
   if(button){
-    button.setAttribute("aria-label",count+" notification"+(count===1?"":"s")+" non traitée"+(count===1?"":"s")+". Ouvrir les notifications");
-    button.title=count+" notification"+(count===1?"":"s")+" non traitée"+(count===1?"":"s");
+    const msg=count+" notification"+(count===1?"":"s")+" non traitée"+(count===1?"":"s")+". Ouvrir les notifications";
+    button.setAttribute("aria-label",msg);button.title=msg;
   }
 }
-function notifList(){
+function updateClientBadge(){
+  const slot=document.getElementById("clientOrderAlertSlot");
+  if(!slot)return;
+  const id=slot.dataset.clientId;
+  const count=openOrders(id).length;
+  const badge=slot.querySelector("#clientOrderBadge");
+  if(!count){if(badge)badge.remove();return;}
+  if(!badge){slot.innerHTML=window.clientOrderBadgeHTML(id);return;}
+  const amount=badge.querySelector("[data-count]");
+  if(amount)amount.textContent=String(count);
+}
+window.clientOrderBadgeHTML=function(clientId){
+  const count=openOrders(clientId).length;
+  if(!count)return "";
+  return '<div class="client-order-alert"><button type="button" id="clientOrderBadge" data-client-id="'+safe(clientId)+'" class="client-order-button" onclick="openClientOrders(this.dataset.clientId)">'+
+    '🔔 Commande en cours <span data-count class="notifications-count">'+count+'</span></button></div>';
+};
+function availableNotifications(){
+  return Object.values(getAll()).filter(n=>n&&n.id).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));
+}
+function filterForTab(){
+  const search=normalize(tabSearch[tab]);
+  return availableNotifications().filter(n=>{
+    if(normalizedStatus(n)!==tab)return false;
+    if(clientFilter!==null&&String(n.clientId)!==String(clientFilter))return false;
+    if(!search)return true;
+    return normalize([n.clientName,n.description,n.interventionDate,n.id].join(" ")).includes(search);
+  });
+}
+function renderList(){
   const pane=document.getElementById("notificationsList");
   if(!pane)return;
-  const values=Object.values(getAll()).filter(Boolean).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));
-  const list=values.filter(n=>(n.status==="treated"?"treated":"pending")===tab);
-  const counts={pending:values.filter(n=>n.status!=="treated").length,treated:values.filter(n=>n.status==="treated").length};
-  const t1=document.getElementById("notificationsPendingTab"),t2=document.getElementById("notificationsTreatedTab");
-  if(t1){t1.classList.toggle("active",tab==="pending");t1.setAttribute("aria-selected",String(tab==="pending"));t1.textContent="Non traitées ("+counts.pending+")";}
-  if(t2){t2.classList.toggle("active",tab==="treated");t2.setAttribute("aria-selected",String(tab==="treated"));t2.textContent="Traitées ("+counts.treated+")";}
-  if(!list.length){pane.innerHTML='<p class="muted" style="padding:14px 0">Aucune notification '+(tab==="pending"?"non traitée.":"traitée.")+'</p>';return;}
+  const list=filterForTab();
+  if(!list.length){
+    pane.innerHTML='<p class="muted" style="padding:14px 0">'+(tabSearch[tab]?"Aucune notification pour cette recherche.":tab==="pending"?"Aucune notification non traitée.":tab==="treated"?"Aucune notification traitée.":"Aucun SAV terminé.")+'</p>';
+    return;
+  }
   pane.innerHTML=list.map(n=>{
-    const date=n.interventionDate||"",stamp=n.createdAt?new Date(n.createdAt).toLocaleString("fr-FR"):"";
-    return '<article class="piece-notification">'+
-    '<div class="row" style="justify-content:space-between;align-items:flex-start"><strong>'+safe(n.clientName||"Client")+'</strong>'+
-    (tab==="pending"?'<button type="button" class="primary small" data-notification-id="'+safe(n.id)+'">✓ Traité</button>':'<span class="badge">✓ Traitée</span>')+'</div>'+
-    '<div class="muted small">Commande de pièce'+(date?' · Intervention du '+safe(date):"")+'</div>'+
-    '<div class="piece-notification-description">'+safe(n.description||"").replace(/\n/g,"<br>")+'</div>'+
-    '<div class="muted small">'+(tab==="treated"&&n.treatedAt?'Traitée le '+safe(new Date(n.treatedAt).toLocaleString("fr-FR")):'Créée le '+safe(stamp))+'</div>'+
-    '</article>';
+    const date=n.interventionDate||"",created=n.createdAt?new Date(n.createdAt).toLocaleString("fr-FR"):"";
+    let action='';
+    if(tab==="pending")action='<button type="button" class="primary small" data-next-status="treated" data-notification-id="'+safe(n.id)+'">✓ Traité</button>';
+    else if(tab==="treated")action='<button type="button" class="primary small" data-next-status="sav_done" data-notification-id="'+safe(n.id)+'">✓ SAV ok</button>';
+    else action='<span class="badge">✓ SAV terminé</span>';
+    const dateInfo=tab==="sav_done"&&n.savCompletedAt?"SAV terminé le "+new Date(n.savCompletedAt).toLocaleString("fr-FR"):
+      tab==="treated"&&n.treatedAt?"Traitée le "+new Date(n.treatedAt).toLocaleString("fr-FR"):"Créée le "+created;
+    return '<article class="piece-notification" id="piece-row-'+safe(n.id)+'" data-order-id="'+safe(n.id)+'">'+
+      '<div class="row" style="justify-content:space-between;align-items:flex-start"><strong>'+safe(n.clientName||"Client")+'</strong>'+action+'</div>'+
+      '<div class="muted small">Commande de pièce'+(date?' · Intervention du '+safe(date):"")+'</div>'+
+      '<div class="piece-notification-description">'+safe(n.description||"").replace(/\n/g,"<br>")+'</div>'+
+      '<div class="muted small">'+safe(dateInfo)+'</div></article>';
   }).join("");
+  if(focusNotification){
+    const id=focusNotification;focusNotification=null;
+    const item=Array.from(pane.querySelectorAll("[data-order-id]")).find(el=>el.dataset.orderId===id);
+    if(item){item.classList.add("piece-notification-highlight");item.scrollIntoView({block:"nearest",behavior:"smooth"});}
+  }
 }
-window.refreshNotificationsCenter=function(){updateCount();notifList();};
-window.openNotificationsCenter=function(){
-  if(document.getElementById("notificationsModal"))return;
-  tab="pending";
+function renderNavigation(){
+  const box=document.getElementById("notificationsModal");
+  if(!box)return;
+  const list=availableNotifications();
+  for(const status of ["pending","treated","sav_done"]){
+    const el=document.getElementById("notificationTab_"+status);
+    if(!el)continue;
+    const count=list.filter(n=>normalizedStatus(n)===status&&(clientFilter===null||String(n.clientId)===String(clientFilter))).length;
+    const label=status==="pending"?"Non traitées":status==="treated"?"Traitées":"SAV terminé";
+    el.textContent=label+" ("+count+")";
+    el.classList.toggle("active",tab===status);
+    el.setAttribute("aria-selected",String(tab===status));
+  }
+  const search=document.getElementById("notificationsSearch");
+  if(search&&document.activeElement!==search)search.value=tabSearch[tab];
+  if(search)search.placeholder="Rechercher un client ou une référence…";
+  const filterBox=document.getElementById("notificationsClientFilter");
+  if(filterBox){
+    const related=clientFilter===null?null:list.find(n=>String(n.clientId)===String(clientFilter));
+    filterBox.hidden=clientFilter===null;
+    if(related)filterBox.querySelector("[data-client-name]").textContent=related.clientName||"Client";
+    else if(clientFilter!==null)filterBox.querySelector("[data-client-name]").textContent="Client sélectionné";
+  }
+}
+function renderAll(){renderNavigation();renderList();}
+window.refreshNotificationsCenter=function(){updateCount();updateClientBadge();renderAll();};
+window.openNotificationsCenter=function(options={}){
+  if(typeof options!=="object"||!options)options={};
+  if(document.getElementById("notificationsModal")){renderAll();return;}
+  clientFilter=options.clientId==null?null:String(options.clientId);
+  focusClient=clientFilter;
+  focusNotification=options.notificationId||null;
+  tab=options.tab&&["pending","treated","sav_done"].includes(options.tab)?options.tab:"pending";
   const overlay=document.createElement("div");
   overlay.id="notificationsModal";
   overlay.className="piece-modal-overlay";
   overlay.innerHTML='<div class="piece-modal panel" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle">'+
     '<div class="row" style="justify-content:space-between"><h2 id="notificationsTitle" style="margin:0">🔔 Centre des notifications</h2>'+
-    '<button class="secondary small" type="button" onclick="closeNotificationsCenter()">✕</button></div>'+
+    '<button class="secondary small" type="button" onclick="closeNotificationsCenter()" aria-label="Fermer">✕</button></div>'+
     '<div class="piece-notification-tabs" role="tablist" aria-label="Statut des notifications">'+
-    '<button type="button" class="piece-tab" role="tab" id="notificationsPendingTab" onclick="setNotificationsTab(\'pending\')"></button>'+
-    '<button type="button" class="piece-tab" role="tab" id="notificationsTreatedTab" onclick="setNotificationsTab(\'treated\')"></button></div>'+
+    '<button type="button" class="piece-tab" role="tab" id="notificationTab_pending" onclick="setNotificationsTab(\'pending\')"></button>'+
+    '<button type="button" class="piece-tab" role="tab" id="notificationTab_treated" onclick="setNotificationsTab(\'treated\')"></button>'+
+    '<button type="button" class="piece-tab" role="tab" id="notificationTab_sav_done" onclick="setNotificationsTab(\'sav_done\')"></button></div>'+
+    '<div id="notificationsClientFilter" class="piece-filter-active" hidden>Commandes : <strong data-client-name></strong>'+
+    '<button class="secondary small" type="button" id="clearClientNotificationFilter">Afficher tout</button></div>'+
+    '<label for="notificationsSearch">Rechercher dans cet onglet</label>'+
+    '<input id="notificationsSearch" class="piece-notification-search" type="search" autocomplete="off" placeholder="Rechercher un client ou une référence…" aria-label="Rechercher dans les notifications de cet onglet">'+
     '<div id="notificationsList" class="piece-notification-list"></div></div>';
   overlay.addEventListener("click",function(e){
-    if(e.target===overlay)window.closeNotificationsCenter();
-    const button=e.target.closest("[data-notification-id]");
-    if(button)window.markPieceNotification(button.dataset.notificationId);
+    if(e.target===overlay){window.closeNotificationsCenter();return;}
+    const action=e.target.closest("[data-next-status]");
+    if(action){window.advancePieceNotification(action.dataset.notificationId,action.dataset.nextStatus);}
+    if(e.target.closest("#clearClientNotificationFilter")){clientFilter=null;focusClient=null;renderAll();}
   });
   document.body.appendChild(overlay);
-  notifList();
+  const input=overlay.querySelector("#notificationsSearch");
+  input.addEventListener("input",()=>{tabSearch[tab]=input.value;renderList();});
+  renderAll();
 };
 window.closeNotificationsCenter=function(){
   document.getElementById("notificationsModal")?.remove();
+  clientFilter=null;focusClient=null;focusNotification=null;
   if(window.refreshMetierFromCloud)window.refreshMetierFromCloud();
 };
 window.setNotificationsTab=function(value){
-  if(value!=="pending"&&value!=="treated")return;
-  tab=value;notifList();
+  if(!["pending","treated","sav_done"].includes(value))return;
+  tab=value;
+  focusNotification=null;
+  const search=document.getElementById("notificationsSearch");
+  if(search)search.value=tabSearch[tab];
+  renderAll();
 };
-window.markPieceNotification=function(id){
-  const data=getAll(),n=data[id];if(!n||n.status==="treated")return;
-  data[id]={...n,status:"treated",treatedAt:new Date().toISOString()};
-  if(saveAll(data)){updateCount();notifList();}
+window.openClientOrders=function(clientId){
+  const orders=openOrders(clientId).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));
+  if(!orders.length){window.refreshNotificationsCenter();return;}
+  const pending=orders.find(n=>normalizedStatus(n)==="pending");
+  const target=pending||orders[0];
+  window.openNotificationsCenter({clientId,tab:normalizedStatus(target),notificationId:target.id});
 };
+window.advancePieceNotification=function(id,next){
+  const data=getAll(),n=data[id];if(!n)return;
+  const status=normalizedStatus(n);
+  if(status==="pending"&&next==="treated"){
+    data[id]={...n,status:"treated",treatedAt:n.treatedAt||new Date().toISOString()};
+  }else if(status==="treated"&&next==="sav_done"){
+    data[id]={...n,status:"sav_done",treatedAt:n.treatedAt||new Date().toISOString(),savCompletedAt:new Date().toISOString()};
+  }else return;
+  if(saveAll(data)){updateCount();updateClientBadge();renderAll();}
+};
+// Ancien nom conservé pour les appels éventuels de l'application.
+window.markPieceNotification=function(id){window.advancePieceNotification(id,"treated");};
 window.createPieceNotification=function({clientId,clientName,description,interventionDate}){
   const id="piece_"+Date.now()+"_"+Math.random().toString(36).slice(2,11);
   const data=getAll();
-  data[id]={id,clientId:String(clientId),clientName:String(clientName||""),description:String(description||"").trim(),interventionDate:String(interventionDate||""),createdAt:new Date().toISOString(),status:"pending",treatedAt:null};
+  data[id]={id,clientId:String(clientId),clientName:String(clientName||""),description:String(description||"").trim(),interventionDate:String(interventionDate||""),createdAt:new Date().toISOString(),status:"pending",treatedAt:null,savCompletedAt:null};
   if(!saveAll(data))return null;
-  updateCount();notifList();return id;
+  window.refreshNotificationsCenter();return id;
 };
 
 window.startInterventionWizard=function(client,onSave){

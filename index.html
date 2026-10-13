@@ -84,6 +84,20 @@ header{background:linear-gradient(90deg,#140e24,#201432 68%,#160f2c);border-bott
 .piece-notification-description{margin:10px 0;white-space:normal;overflow-wrap:anywhere}
 .piece-saved-note{padding:10px;border:1px solid #247448;border-radius:9px;color:#aaf3c3;background:#0b3422}
 @media(max-width:650px){.notifications-button{min-width:52px;padding:8px;gap:3px}.piece-modal{max-height:90dvh;padding:16px}}
+
+/* v1.1 : badge SAV de la fiche client et recherche des trois listes. */
+.client-order-alert{display:flex;align-items:center;margin:0 0 14px}
+.client-order-button{display:inline-flex;align-items:center;gap:9px;padding:10px 13px;max-width:100%;border:1px solid #c98a30;border-radius:999px;background:#52370f;color:#ffebaf;font-size:14px;font-weight:750;cursor:pointer}
+.client-order-button:hover{background:#654717}
+.client-order-button[hidden]{display:none!important}
+.client-order-button .notifications-count{background:#c5691b}
+.piece-notification-search{width:100%;min-height:44px;font-size:16px;margin:0 0 8px}
+.piece-notification-tabs{flex-wrap:wrap}
+.piece-tab{min-width:100px;flex:1 1 120px;font-size:13px}
+.piece-filter-active{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:8px 0 12px;padding:9px;border:1px solid #35618b;border-radius:9px;background:#0c2b4c}
+.piece-filter-active[hidden]{display:none!important}
+.piece-notification-highlight{border-color:#e4ac47!important;box-shadow:0 0 0 2px rgba(231,166,68,.3)}
+@media(max-width:390px){.piece-tab{flex:1 1 85px;padding:10px 6px;font-size:12px}}
 </style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
@@ -239,7 +253,7 @@ function openClientById(id){const box=document.getElementById("clientMenu");if(b
 function openClient(id){current=clients.find(c=>c.id===id);if(!current)return;document.getElementById("home").classList.add("hidden");document.getElementById("equipment").classList.add("hidden");document.getElementById("diagnostic").classList.add("hidden");document.getElementById("client").classList.remove("hidden");renderClient();requestAnimationFrame(()=>window.scrollTo(0,0))}
 function renderClient(){
 const c=current,r=ratio(c),ints=[...c.interventions].sort((a,b)=>b.iso.localeCompare(a.iso)),first=ints.length?ints[ints.length-1].date:"—",last=ints.length?ints[0].date:"—";
-document.getElementById("clientBody").innerHTML='<div class="panel"><div class="row" style="justify-content:space-between"><div><h2>'+esc(c.name)+'</h2><div>'+addressLink(c)+(c.addressComplement?'<div class="muted small">↳ '+esc(c.addressComplement)+'</div>':'')+'</div><div class="contact-list">'+(c.phone?'<a class="contact-link" href="tel:'+encodeURIComponent(c.phone)+'">📞 '+esc(c.phone)+'</a>':'<span class="muted">📞 Téléphone non renseigné</span>')+(c.email?'<a class="contact-link" href="mailto:'+encodeURIComponent(c.email)+'">✉️ '+esc(c.email)+'</a>':'<span class="muted">✉️ Email non renseigné</span>')+'</div><div style="margin-top:12px"><span class="muted small">Mois d’entretien</span><div><b>'+(c.maintenanceMonth?(Number(c.maintenanceMonth)+" - "+clientMonthLabel(c.maintenanceMonth).split(" - ")[1]):"Non renseigné")+'</b></div></div><div style="text-align:right"><div class="stat">'+(r||"—")+'</div><div class="muted">interventions/an</div></div></div><div class="grid section"><div class="card"><div class="muted">Interventions</div><div class="stat">'+c.interventions.length+'</div></div><div class="card"><div class="muted">Première</div><b>'+first+'</b></div><div class="card"><div class="muted">Dernière</div><b>'+last+'</b></div><div class="card"><div class="muted">Pièces jointes importées</div><b>'+c.attachments+'</b></div></div></div>'+
+document.getElementById("clientBody").innerHTML='<div class="panel"><div id="clientOrderAlertSlot" data-client-id="'+esc(c.id)+'">'+(window.clientOrderBadgeHTML?window.clientOrderBadgeHTML(c.id):"")+'</div><div class="row" style="justify-content:space-between"><div><h2>'+esc(c.name)+'</h2><div>'+addressLink(c)+(c.addressComplement?'<div class="muted small">↳ '+esc(c.addressComplement)+'</div>':'')+'</div><div class="contact-list">'+(c.phone?'<a class="contact-link" href="tel:'+encodeURIComponent(c.phone)+'">📞 '+esc(c.phone)+'</a>':'<span class="muted">📞 Téléphone non renseigné</span>')+(c.email?'<a class="contact-link" href="mailto:'+encodeURIComponent(c.email)+'">✉️ '+esc(c.email)+'</a>':'<span class="muted">✉️ Email non renseigné</span>')+'</div><div style="margin-top:12px"><span class="muted small">Mois d’entretien</span><div><b>'+(c.maintenanceMonth?(Number(c.maintenanceMonth)+" - "+clientMonthLabel(c.maintenanceMonth).split(" - ")[1]):"Non renseigné")+'</b></div></div><div style="text-align:right"><div class="stat">'+(r||"—")+'</div><div class="muted">interventions/an</div></div></div><div class="grid section"><div class="card"><div class="muted">Interventions</div><div class="stat">'+c.interventions.length+'</div></div><div class="card"><div class="muted">Première</div><b>'+first+'</b></div><div class="card"><div class="muted">Dernière</div><b>'+last+'</b></div><div class="card"><div class="muted">Pièces jointes importées</div><b>'+c.attachments+'</b></div></div></div>'+
 '<div class="panel section"><div class="row" style="justify-content:space-between"><h3>🔧 Équipements du client</h3><div class="row"><button class="secondary" onclick="assignEquipment(\'chaudiere\')">＋ Chaudière</button><button class="secondary" onclick="assignEquipment(\'pac_air_air\')">＋ PAC air/air</button></div></div><div id="clientEquipmentList"></div></div>'+
 '<div class="panel section"><div class="row" style="justify-content:space-between"><h3>🛠 Historique des interventions</h3><button class="primary" onclick="newIntervention()">＋ Nouvelle intervention</button></div><div class="timeline">'+(ints.map(x=>'<div class="event"><strong>'+esc(x.date)+'</strong><div>'+esc(x.description)+'</div><button class="secondary small" style="margin-top:7px" onclick="editIntervention(\''+x.iso+'\')">Modifier</button></div>').join("")||'<p class="muted">Aucune intervention datée.</p>')+'</div></div>'+
 '<div class="panel section"><div class="row" style="justify-content:space-between"><h3>📷 Photos du client</h3><div class="row"><button type="button" class="primary" onclick="openCamera()">📷 Prendre une photo</button><button type="button" class="secondary" onclick="openGallery()">🖼️ Importer</button></div></div><input id="photoCamera" type="file" accept="image/*" capture="environment" style="display:none" onchange="addPhotos(this.files)"><input id="photoImport" type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(this.files)"><div id="photoGallery" class="photo-grid"></div><p class="muted small">Les photos sont enregistrées localement dans ce navigateur et restent associées à cette fiche client.</p></div><div class="panel section"><h3>📝 Notes originales</h3><details><summary>Afficher la note Keep importée</summary><pre style="white-space:pre-wrap;font:inherit">'+esc(c.notes)+'</pre></details></div>';
@@ -678,13 +692,18 @@ function mergePending(k,patch,remote){
     if(change.after===null)delete out[id];else out[id]=change.after;
     continue;
    }
-   // Changement de statut concurrent sur la même commande : "traitée" gagne.
+   // Conflit entre deux appareils : garder l'étape la plus avancée.
    const after=change.after;
    if(after&&theirs&&after.id===theirs.id&&after.clientId===theirs.clientId&&
       after.clientName===theirs.clientName&&after.description===theirs.description&&
       after.interventionDate===theirs.interventionDate&&after.createdAt===theirs.createdAt){
-    const treated=after.status==="treated"?after:(theirs.status==="treated"?theirs:null);
-    if(treated){out[id]={...theirs,status:"treated",treatedAt:treated.treatedAt||after.treatedAt||theirs.treatedAt||new Date().toISOString()};continue;}
+    const rank=s=>s==="sav_done"?2:s==="treated"?1:0;
+    const winner=rank(after.status)>=rank(theirs.status)?after:theirs;
+    const finalStatus=rank(winner.status)===2?"sav_done":rank(winner.status)===1?"treated":"pending";
+    out[id]={...theirs,status:finalStatus,
+      treatedAt:finalStatus!=="pending"?(theirs.treatedAt||after.treatedAt||new Date().toISOString()):null,
+      savCompletedAt:finalStatus==="sav_done"?(theirs.savCompletedAt||after.savCompletedAt||new Date().toISOString()):null};
+    continue;
    }
    return null;
   }
