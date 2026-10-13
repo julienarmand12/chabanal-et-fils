@@ -26,7 +26,13 @@ function countOpen(){
 }
 function updateCount(){
   const count=countOpen(),badge=document.getElementById("notificationCount"),button=document.getElementById("notificationsButton");
-  if(badge)badge.textContent=String(count);
+  if(badge){
+    badge.textContent=String(count);
+    // 0 : vert, toute notification à traiter : rouge.
+    badge.style.backgroundColor=count===0?'#15803d':'#b91c1c';
+    badge.style.color='#ffffff';
+    badge.style.borderColor=count===0?'#22c55e':'#ef4444';
+  }
   if(button){
     const msg=count+" notification"+(count===1?"":"s")+" non traitée"+(count===1?"":"s")+". Ouvrir les notifications";
     button.setAttribute("aria-label",msg);button.title=msg;
