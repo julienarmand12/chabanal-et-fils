@@ -37,7 +37,7 @@ function list(scope,id){
 }
 function cacheRow(scope,id,key,value){const k=group(scope,id);let m=cache.get(k);if(!m){m=new Map();cache.set(k,m)}m.set(key,value)}
 function notify(scope,id){
- const v=visible();if(v&&v.scope===scope&&String(v.id)===String(id))draw(scope,id);
+ const v=visible();if(v&&v.scope===scope&&String(v.id)===String(id)){draw(scope,id);if(scope==="diagnostic")hideLegacyCopies(scope,id);}
 }
 async function remotePage(sb,scope,id){
  const p=prefix(scope,id),results=[];
@@ -55,7 +55,7 @@ async function refresh(scope,id){
   const sb=await cloud();if(!sb)return;
   try{
    const rows=await remotePage(sb,scope,id),m=new Map();
-   for(const r of rows)m.set(r.key_name,r.value_json);
+   for(const r of rows)if(r.key_name.startsWith(prefix(scope,id)))m.set(r.key_name,r.value_json);
    cache.set(key,m);lastError="";
    if(scope==="client")await migrateLocalClient(sb,id,m);
    if(scope==="diagnostic")await migrateLegacyDiagnostic(sb,id,m);
@@ -329,7 +329,8 @@ window.metierMediaRefreshIfVisible=async function(){
  await flush();await refresh(v.scope,v.id);
  if(v.scope==="diagnostic")hideLegacyCopies(v.scope,v.id);
 };
-window.addEventListener("online",()=>window.metierMediaRefreshIfVisible().catch(console.warn));
+window.addEventListener("online",()=>{flush().catch(console.warn);window.metierMediaRefreshIfVisible().catch(console.warn)});
+window.addEventListener("load",()=>setTimeout(()=>flush().catch(console.warn),1500));
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)window.metierMediaRefreshIfVisible().catch(console.warn)});
-refreshTimer=setInterval(()=>{if(document.visibilityState==="visible")window.metierMediaRefreshIfVisible().catch(console.warn)},25000);
+refreshTimer=setInterval(()=>{if(document.visibilityState==="visible"){flush().catch(console.warn);window.metierMediaRefreshIfVisible().catch(console.warn)}},25000);
 })();
