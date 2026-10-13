@@ -22,20 +22,32 @@ let clientFilter=null;
 let focusNotification=null;
 let focusClient=null;
 function countOpen(){
-  return Object.values(getAll()).filter(n=>n&&!n.deleted&&normalizedStatus(n)==="pending").length;
+  // Même sélection que l'onglet « Non traitées » (hors filtres de recherche).
+  return availableNotifications().filter(n=>normalizedStatus(n)==="pending").length;
 }
 function updateCount(){
-  const count=countOpen(),badge=document.getElementById("notificationCount"),button=document.getElementById("notificationsButton");
+  const count=countOpen();
+  const badge=document.getElementById("notificationCount");
+  const button=document.getElementById("notificationsButton");
+  const pending=count>0;
+  const background=pending?"#991b1b":"#166534";
+  const border=pending?"#f87171":"#4ade80";
+  const badgeBackground=pending?"#b91c1c":"#15803d";
   if(badge){
     badge.textContent=String(count);
-    // 0 : vert, toute notification à traiter : rouge.
-    badge.style.backgroundColor=count===0?'#15803d':'#b91c1c';
-    badge.style.color='#ffffff';
-    badge.style.borderColor=count===0?'#22c55e':'#ef4444';
+    badge.style.setProperty("background-color",badgeBackground,"important");
+    badge.style.setProperty("color","#ffffff","important");
+    badge.setAttribute("data-pending-state",pending?"has-pending":"empty");
   }
   if(button){
+    // Coloration du bouton ENTIER (cloche + fond), pas uniquement du compteur.
+    button.setAttribute("data-pending-state",pending?"has-pending":"empty");
+    button.style.setProperty("background-color",background,"important");
+    button.style.setProperty("border-color",border,"important");
+    button.style.setProperty("color","#ffffff","important");
     const msg=count+" notification"+(count===1?"":"s")+" non traitée"+(count===1?"":"s")+". Ouvrir les notifications";
-    button.setAttribute("aria-label",msg);button.title=msg;
+    button.setAttribute("aria-label",msg);
+    button.title=msg;
   }
 }
 function updateClientBadge(){
