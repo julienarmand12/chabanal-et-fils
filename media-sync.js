@@ -5,6 +5,7 @@
 "use strict";
 const ROOT="metier_media_v1_", PENDING="chabanal_media_pending_v1";
 const MAX_FILE=3*1024*1024;
+const state=()=>typeof window.metierMediaState==='function'?window.metierMediaState():{};
 const cache=new Map(),inflight=new Map(),migrations=new Set();
 let running=false, refreshBusy=false, lastError="", refreshTimer=null;
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -19,9 +20,9 @@ const group=(scope,id)=>scope+":"+id;
 const dataOk=s=>typeof s==="string"&&/^data:(image\/(jpeg|png|webp|gif)|application\/pdf|text\/plain|application\/(msword|vnd\.openxmlformats-officedocument\.[a-z0-9.-]+|vnd\.ms-excel|vnd\.ms-powerpoint|octet-stream));base64,/i.test(s);
 const isImage=x=>!!x&&/^image\/(jpeg|png|webp|gif)$/i.test(x.mime||"");
 function visible(){
- const c=window.current;
+ const c=state().current;
  if(c&&document.getElementById("client")&&!document.getElementById("client").classList.contains("hidden")&&!document.getElementById("e_name"))return {scope:"client",id:c.id};
- const d=window.currentDiagnosticId;
+ const d=state().currentDiagnosticId;
  if(d&&document.getElementById("diagnostic")&&!document.getElementById("diagnostic").classList.contains("hidden"))return {scope:"diagnostic",id:d};
  return null;
 }
@@ -104,7 +105,7 @@ function draw(scope,id){
    if(!area){area=document.createElement("div");area.id="diagnosticCloudMedia";brandPanel.appendChild(area);}
    area.innerHTML='<div class="photo-grid">'+(all.filter(x=>!x.codeId).map(fileHtml).join("")||"")+'</div>'+showStatus(scope,id);
   }
-  const codeNodes=body.querySelectorAll(".diagnostic-code"),d=window.diagnosticBrands?.find(x=>String(x.id)===String(id));
+  const codeNodes=body.querySelectorAll(".diagnostic-code"),d=state().diagnosticBrands?.find(x=>String(x.id)===String(id));
   codeNodes.forEach((node,i)=>{
    const c=d?.codes?.[i],codeId=c&&(c.mediaId||"legacy_"+i);
    if(!codeId)return;
@@ -212,7 +213,7 @@ async function removeFile(key){
  const q=parse();q[key]={...item,deleted:true,data:null,deletedAt:new Date().toISOString()};
  if(!savePending(q))return;
  if(item.scope==="client"){
-  const c=window.clients?.find(x=>String(x.id)===String(item.ownerId));
+  const c=state().clients?.find(x=>String(x.id)===String(item.ownerId));
   if(c&&typeof window.getPhotos==="function"){
    const existing=window.getPhotos(c);
    const left=existing.filter(x=>fileKey("client",c.id,"legacy_"+hash(x))!==key);
@@ -230,7 +231,7 @@ async function openFile(key){
  }catch(e){alert("Ouverture du fichier impossible.")}
 }
 async function migrateLocalClient(sb,id,known){
- const c=window.clients?.find(x=>String(x.id)===String(id));
+ const c=state().clients?.find(x=>String(x.id)===String(id));
  if(!c||typeof window.getPhotos!=="function")return;
  const legacy=window.getPhotos(c);
  if(!legacy.length)return;
@@ -252,7 +253,7 @@ async function migrateLocalClient(sb,id,known){
  }
 }
 async function migrateLegacyDiagnostic(sb,id,known){
- const d=window.diagnosticBrands?.find(x=>String(x.id)===String(id));
+ const d=state().diagnosticBrands?.find(x=>String(x.id)===String(id));
  if(!d)return;
  const sources=[];
  (d.documents||[]).forEach((doc,i)=>{if(dataOk(doc.data))sources.push({data:doc.data,name:doc.name||"Document",kind:doc.type?.startsWith("image/")?"photo":"document",codeId:null,mime:doc.type||"application/pdf"})});
@@ -262,7 +263,7 @@ async function migrateLegacyDiagnostic(sb,id,known){
   (code.documents||[]).forEach(doc=>{if(dataOk(doc.data))sources.push({data:doc.data,name:doc.name||"Document",kind:"document",codeId,mime:doc.type||"application/pdf"})});
  });
  for(const src of sources){
-  const uid="legacy_"+hash(src.data),key=fileKey("diagnostic",id,uid);
+  const uid="legacy_"+hash((src.codeId||"brand")+"|"+src.data),key=fileKey("diagnostic",id,uid);
   if(known.has(key)||migrations.has(key))continue;
   migrations.add(key);
   const item={id:uid,key,scope:"diagnostic",ownerId:String(id),kind:src.kind,codeId:src.codeId,name:src.name,mime:src.mime,data:src.data,createdAt:new Date().toISOString()};
@@ -274,7 +275,7 @@ async function migrateLegacyDiagnostic(sb,id,known){
 // Évite d'afficher deux fois un document encore présent dans les anciennes fiches.
 function hideLegacyCopies(scope,id){
  if(scope!=="diagnostic")return;
- const d=window.diagnosticBrands?.find(x=>String(x.id)===String(id));if(!d)return;
+ const d=state().diagnosticBrands?.find(x=>String(x.id)===String(id));if(!d)return;
  const inline=new Set([...(d.documents||[]).map(x=>x.data),...(d.codes||[]).flatMap(c=>[...(c.photos||[]),...(c.documents||[]).map(x=>x.data)])]);
  const parent=document.getElementById("diagnosticBody");if(!parent)return;
  for(const btn of parent.querySelectorAll("[data-media-open]")){
@@ -285,7 +286,7 @@ function hideLegacyCopies(scope,id){
 const oldClientPhotos=window.renderPhotos;
 window.renderPhotos=function(){
  if(typeof oldClientPhotos==="function")oldClientPhotos();
- const c=window.current;if(!c)return;
+ const c=state().current;if(!c)return;
  const id=c.id;
  // Ne jamais bloquer l'affichage pendant une récupération réseau.
  const legacy=window.getPhotos?.(c)||[];
@@ -298,17 +299,17 @@ window.renderPhotos=function(){
  refresh("client",id).catch(console.warn);
 };
 window.addPhotos=async function(files){
- const c=window.current;if(!c)return;
+ const c=state().current;if(!c)return;
  await addFiles("client",c.id,"photo",null,files);
 };
 window.addDiagnosticDocuments=function(id){
- if(!window.diagnosticBrands?.some(d=>String(d.id)===String(id)))return;
+ if(!state().diagnosticBrands?.some(d=>String(d.id)===String(id)))return;
  pickFiles("diagnostic",id,"document",null,true);
 };
 const renderBrand=window.renderDiagnosticBrand;
 window.renderDiagnosticBrand=function(){
  if(typeof renderBrand==="function")renderBrand();
- const id=window.currentDiagnosticId;if(!id)return;
+ const id=state().currentDiagnosticId;if(!id)return;
  draw("diagnostic",id);
  hideLegacyCopies("diagnostic",id);
  refresh("diagnostic",id).catch(console.warn);
