@@ -18,9 +18,32 @@ const all=()=>{
  for(const [k,x] of Object.entries(pending))if(x&&x.value)m[k]=x.value;
  return Object.values(m).filter(x=>x&&typeof x==="object");
 };
-const brands=()=>all().filter(x=>x.kind==="brand"&&!x.deleted).sort((a,b)=>a.name.localeCompare(b.name,"fr",{sensitivity:"base"}));
+// Une seule rubrique visible, sans déplacement ni suppression des références existantes.
+const COMBINED_NAME="Ariston / Chaffoteaux";
+const combinedBrand=name=>{
+ const n=norm(name).replace(/[\\/&+\\-]+/g," ").replace(/\\s+/g," ").trim();
+ return n==="ariston"||n==="chaffoteaux"||n==="ariston chaffoteaux"||n==="chaffoteaux ariston";
+};
+const rawBrands=()=>all().filter(x=>x.kind==="brand"&&!x.deleted);
+const combinedIds=()=>new Set(rawBrands().filter(b=>combinedBrand(b.name)).map(b=>b.id));
+const brands=()=>{
+ const raw=rawBrands(),group=raw.filter(b=>combinedBrand(b.name)),other=raw.filter(b=>!combinedBrand(b.name));
+ if(group.length){
+  const representative=group.find(b=>norm(b.name)===norm(COMBINED_NAME))||
+   group.find(b=>norm(b.name)==="ariston")||
+   group.slice().sort((a,b)=>String(a.id).localeCompare(String(b.id)))[0];
+  other.push({...representative,name:COMBINED_NAME});
+ }
+ return other.sort((a,b)=>a.name.localeCompare(b.name,"fr",{sensitivity:"base"}));
+};
+const canonicalId=id=>{
+ const group=combinedIds();
+ return group.has(id)?(brands().find(b=>combinedBrand(b.name))?.id||id):id;
+};
+const sameStock=(id,chosen)=>id===chosen||(combinedIds().has(id)&&combinedIds().has(chosen));
 const items=()=>all().filter(x=>x.kind==="item"&&!x.deleted);
-const brandName=id=>brands().find(b=>b.id===id)?.name||"Marque inconnue";
+const originalBrandName=id=>rawBrands().find(b=>b.id===id)?.name||"Marque inconnue";
+const brandName=id=>combinedIds().has(id)?COMBINED_NAME:originalBrandName(id);
 function saveChange(data){
  const obj={...data,updatedAt:stamp()},key=keyFor(obj),old=pending[key];
  const next={...pending,[key]:{value:obj,baseVersion:old?old.baseVersion:Number(cache[key]?.version||0),nonce:uid()}};
@@ -31,7 +54,7 @@ function option(v,t){return '<option value="'+esc(v)+'">'+esc(t)+'</option>'}
 function render(){
  if(!el("stock")||!initialized||el("stock").classList.contains("hidden"))return;
  const opts=brands(),select=el("stock-brand-filter");
- const before=selected||select.value;
+ const before=canonicalId(selected||select.value);
  if(!opts.some(x=>x.id===before))selected=opts[0]?.id||"";else selected=before;
  select.innerHTML=option("","Choisir une marque…")+opts.map(b=>option(b.id,b.name)).join("");
  select.value=selected;
@@ -41,12 +64,14 @@ function render(){
  el("stock-scan-search").disabled=!active;
  el("stock-add-item").disabled=!active;
  const q=norm(el("stock-search").value);
- const allItems=items().filter(x=>x.brandId===selected);
+ const allItems=items().filter(x=>sameStock(x.brandId,selected));
+ const repeatedReferences=new Map();
+ for(const x of allItems)repeatedReferences.set(norm(x.reference),(repeatedReferences.get(norm(x.reference))||0)+1);
  const matching=allItems.filter(x=>!q||[x.reference,x.designation,x.barcode].some(t=>norm(t).includes(q))).sort((a,b)=>a.reference.localeCompare(b.reference,"fr",{numeric:true,sensitivity:"base"}));
  el("stock-summary").innerHTML=active?'<span class="stock-pill">'+allItems.length+' référence(s)</span><span class="stock-pill">'+allItems.reduce((v,x)=>v+Number(x.quantity||0),0)+' pièce(s)</span>':'';
  el("stock-list").innerHTML=!active?'<div class="stock-empty">Sélectionne ou crée une marque.</div>':!matching.length?'<div class="stock-empty">'+(q?"Aucun article correspondant dans cette marque.":"Aucune référence pour cette marque.")+'</div>':matching.map(x=>
   '<div class="stock-article-row" data-stock-id="'+esc(x.id)+'">'+
-  '<div class="stock-ref-cell"><span class="stock-coltitle">Référence</span><div class="stock-reference">'+esc(x.reference)+'</div>'+(x.barcode&&x.barcode!==x.reference?'<div class="muted small">Code-barres : '+esc(x.barcode)+'</div>':'')+'</div>'+
+  '<div class="stock-ref-cell"><span class="stock-coltitle">Référence</span><div class="stock-reference">'+esc(x.reference)+'</div>'+(x.barcode&&x.barcode!==x.reference?'<div class="muted small">Code-barres : '+esc(x.barcode)+'</div>':'')+(repeatedReferences.get(norm(x.reference))>1?'<div class="muted small">Origine : '+esc(originalBrandName(x.brandId))+'</div>':'')+'</div>'+
   '<div class="stock-designation-cell"><span class="stock-coltitle">Désignation</span><div class="stock-designation">'+esc(x.designation)+'</div></div>'+
   '<div class="stock-qty-cell"><label class="stock-coltitle" for="stock-qty-'+esc(x.id)+'">Quantité</label><input id="stock-qty-'+esc(x.id)+'" data-stock-quantity="'+esc(x.id)+'" class="stock-qty" type="number" inputmode="numeric" min="0" step="1" value="'+Number(x.quantity||0)+'" aria-label="Quantité de '+esc(x.reference)+'"></div>'+
   '<div class="stock-article-actions"><button type="button" class="secondary small" data-stock-edit="'+esc(x.id)+'">Modifier</button><button type="button" class="secondary small" data-stock-delete="'+esc(x.id)+'">Supprimer</button></div></div>'
@@ -65,7 +90,7 @@ function renderStatus(){
 function knownBrandSuggestions(){
  const existing=brands().map(b=>b.name);
  const models=typeof equipmentModels!=="undefined"&&Array.isArray(equipmentModels)?equipmentModels.map(m=>m.brand):[];
- const vals=[...new Set([...existing,...models].map(s=>String(s||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"fr",{sensitivity:"base"}));
+ const vals=[...new Set([...existing,...models].map(s=>String(s||"").trim()).filter(Boolean).map(s=>combinedBrand(s)?COMBINED_NAME:s))].sort((a,b)=>a.localeCompare(b,"fr",{sensitivity:"base"}));
  return '<datalist id="stock-known-brands">'+vals.map(x=>option(x,x)).join("")+'</datalist>';
 }
 function showModal(inner,submit){
@@ -83,8 +108,9 @@ function addBrand(){
  showModal('<form><div class="row" style="justify-content:space-between"><h2>Créer un stock par marque</h2><button type="button" class="secondary" data-stock-close>✕</button></div>'+
  '<label for="stock-new-brand">Marque de l’équipement</label><input id="stock-new-brand" list="stock-known-brands" maxlength="100" autocomplete="off" required placeholder="Ex. Frisquet">'+knownBrandSuggestions()+
  '<div class="form-actions"><button type="submit" class="primary">Créer la marque</button><button type="button" class="secondary" data-stock-close onclick="this.closest(\'.modal-backdrop\').remove()">Annuler</button></div></form>',()=>{
-  const name=el("stock-new-brand").value.trim().replace(/\s+/g," ");
-  if(!name)return;
+  const typed=el("stock-new-brand").value.trim().replace(/\s+/g," ");
+  if(!typed)return;
+  const name=combinedBrand(typed)?COMBINED_NAME:typed;
   const duplicate=brands().find(b=>norm(b.name)===norm(name));
   if(duplicate){selected=duplicate.id;closeModal();render();return;}
   const id=uid();
@@ -104,8 +130,8 @@ function articleModal(id){
  const ref=el("stock-article-reference").value.trim(),desc=el("stock-article-designation").value.trim(),barcode=el("stock-article-barcode").value.trim(),raw=el("stock-article-quantity").value,qty=Number(raw);
  if(!ref||!desc){alert("Référence et désignation obligatoires.");return}
  if(!Number.isSafeInteger(qty)||qty<0||qty>99999999||raw===""){alert("La quantité doit être un nombre entier positif ou nul.");return}
- if(items().some(x=>x.brandId===selected&&x.id!==id&&norm(x.reference)===norm(ref))){alert("Cette référence existe déjà dans le stock de cette marque.");return}
- if(saveChange({kind:"item",id:record?.id||uid(),brandId:selected,reference:ref,designation:desc,quantity:qty,barcode,deleted:false})){closeModal();render();}
+ if(items().some(x=>sameStock(x.brandId,selected)&&x.id!==id&&norm(x.reference)===norm(ref))){alert("Cette référence existe déjà dans le stock de cette marque.");return}
+ if(saveChange({kind:"item",id:record?.id||uid(),brandId:record?.brandId||selected,reference:ref,designation:desc,quantity:qty,barcode,deleted:false})){closeModal();render();}
  });
  el("stock-article-scan").addEventListener("click",()=>openScanner(code=>{
   const bar=el("stock-article-barcode"),ref=el("stock-article-reference");
