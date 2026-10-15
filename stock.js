@@ -9,7 +9,7 @@ const uid=()=>typeof crypto!=="undefined"&&crypto.randomUUID?crypto.randomUUID()
 const stamp=()=>new Date().toISOString();
 function read(key){try{const o=JSON.parse(localStorage.getItem(key)||"{}");return o&&typeof o==="object"&&!Array.isArray(o)?o:{}}catch(e){return {}}}
 function persist(key,obj){try{localStorage.setItem(key,JSON.stringify(obj));return true}catch(e){alert("Stockage local plein : changement non conservé.");return false}}
-let cache=read(CACHE),pending=read(PENDING),selected="",busy=false,lastError="",lastSynced=false,sbChannel=null,initialized=false;
+let cache=read(CACHE),pending=read(PENDING),selected="",busy=false,lastError="",lastSynced=false,sbChannel=null,initialized=false,resyncRequested=false;
 let scanner=null,scannerStream=null,scannerActive=false,scannerTimer=null,scanCallback=null,scanToken=0,scanScript=null;
 const keyFor=o=>PREFIX+o.kind+"_"+o.id;
 const all=()=>{
@@ -29,7 +29,7 @@ function saveChange(data){
 }
 function option(v,t){return '<option value="'+esc(v)+'">'+esc(t)+'</option>'}
 function render(){
- if(!el("stock")||!initialized)return;
+ if(!el("stock")||!initialized||el("stock").classList.contains("hidden"))return;
  const opts=brands(),select=el("stock-brand-filter");
  const before=selected||select.value;
  if(!opts.some(x=>x.id===before))selected=opts[0]?.id||"";else selected=before;
@@ -192,7 +192,7 @@ async function attachRealtime(sb){
  }catch(e){console.warn("Réception instantanée indisponible, vérification périodique active.",e)}
 }
 async function sync(){
- if(busy)return;
+ if(busy){resyncRequested=true;return}
  busy=true;
  try{
   const sb=await cloud();
@@ -206,7 +206,7 @@ async function sync(){
    else render();
   }
  }catch(e){statusError(e)}
- finally{busy=false}
+ finally{busy=false;if(resyncRequested){resyncRequested=false;Promise.resolve().then(()=>sync().catch(console.warn));}}
 }
 function loadFallbackScanner(){
  if(window.Html5Qrcode)return Promise.resolve();
@@ -320,7 +320,7 @@ function init(){
  window.addEventListener("online",()=>sync().catch(console.warn));
  document.addEventListener("visibilitychange",()=>{if(!document.hidden)sync().catch(console.warn)});
  window.addEventListener("keydown",e=>{if(e.key==="Escape"){if(el("stock-scan-modal"))closeScanner();else closeModal()}});
- setInterval(()=>{if(document.visibilityState==="visible")sync().catch(console.warn)},25000);
+ setInterval(()=>{if(document.visibilityState==="visible"&&(!el("stock")?.classList.contains("hidden")||Object.keys(pending).length))sync().catch(console.warn)},25000);
  render();
  sync().catch(console.warn);
 }
