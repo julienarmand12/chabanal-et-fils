@@ -27,6 +27,7 @@
     try{
       document.querySelectorAll(".modal-backdrop").forEach(x=>x.remove());
       window.__deleteConfirmCallback=null;
+      if(r?.view!=="stock"&&typeof window.stockCloseScanner==="function")window.stockCloseScanner();
       for(const id of ["home","client","equipment","diagnostic","stock"])
         document.getElementById(id).classList.add("hidden");
       const show=id=>document.getElementById(id).classList.remove("hidden");
@@ -82,6 +83,7 @@
   }
   const leaveStock=()=>document.getElementById("stock")?.classList.add("hidden");
   wrap("openStock",function(){pushRoute("stock");});
+  wrap("newClient",function(){leaveStock();});
   wrap("openClient",function(id){
     leaveStock();
     if(clients.some(c=>c.id===id))pushRoute("client",id);
