@@ -27,7 +27,7 @@
     try{
       document.querySelectorAll(".modal-backdrop").forEach(x=>x.remove());
       window.__deleteConfirmCallback=null;
-      for(const id of ["home","client","equipment","diagnostic"])
+      for(const id of ["home","client","equipment","diagnostic","stock"])
         document.getElementById(id).classList.add("hidden");
       const show=id=>document.getElementById(id).classList.remove("hidden");
 
@@ -46,6 +46,9 @@
           show("equipment");
           renderEquipmentPage();
         }else{show("home");search();replaceRoute("home");}
+      }else if(r && r.view==="stock"){
+        show("stock");
+        if(typeof window.stockOpenView==="function")window.stockOpenView();
       }else if(r && r.view==="diagnostic"){
         currentDiagnosticId=null;
         show("diagnostic");
@@ -77,14 +80,19 @@
       return result;
     };
   }
+  const leaveStock=()=>document.getElementById("stock")?.classList.add("hidden");
+  wrap("openStock",function(){pushRoute("stock");});
   wrap("openClient",function(id){
+    leaveStock();
     if(clients.some(c=>c.id===id))pushRoute("client",id);
   });
   wrap("openEquipment",function(id){
+    leaveStock();
     if(equipmentModels.some(m=>m.id===id))pushRoute("equipment",id);
   });
-  wrap("openDiagnosticHome",function(){pushRoute("diagnostic");});
+  wrap("openDiagnosticHome",function(){leaveStock();pushRoute("diagnostic");});
   wrap("openDiagnosticBrand",function(id){
+    leaveStock();
     if(diagnosticBrands.some(d=>d.id===id))pushRoute("diagnosticBrand",id);
   });
   wrap("editClient",function(){if(current)pushRoute("clientEdit",current.id);});
