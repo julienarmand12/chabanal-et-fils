@@ -2,6 +2,7 @@
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Chabanal et fils — v1.1</title>
 <link rel="manifest" href="./manifest.webmanifest">
+<link rel="stylesheet" href="./stock.css">
 <meta name="theme-color" content="#03162e">
 <link rel="icon" type="image/png" href="./icon-chabanal-192.png">
 <link rel="apple-touch-icon" href="./icon-chabanal-192.png">
@@ -166,6 +167,9 @@ header{background:linear-gradient(90deg,#140e24,#201432 68%,#160f2c);border-bott
 <div class="card click clickable-card home-tile" onclick="openDiagnosticHome()" title="Ouvrir les diagnostics">
  <span class="home-icon">🩺</span><div><div class="home-label">Diagnostic</div><div class="muted home-tile-sub">Marques et codes défauts</div></div>
 </div>
+<div class="card click clickable-card home-tile" onclick="openStock()" title="Gérer le stock des pièces par marque">
+ <span class="home-icon">📦</span><div><div class="home-label">Stock</div><div class="muted home-tile-sub">Références et quantités</div></div>
+</div>
 <div class="card click clickable-card home-tile" onclick="window.open('https://pieces-chauffe.fr/vues-eclatees','_blank','noopener')" title="Ouvrir les vues éclatées">
  <span class="home-icon">📐</span><div><div class="home-label">Vues éclatées</div><div class="muted home-tile-sub">Documentations</div></div>
 </div>
@@ -181,6 +185,24 @@ header{background:linear-gradient(90deg,#140e24,#201432 68%,#160f2c);border-bott
 <section id="diagnostic" class="hidden">
 <div class="row" style="justify-content:space-between;margin-bottom:12px"><button class="secondary" onclick="appGoBack()">← Retour</button><button class="primary" onclick="newDiagnosticBrand()">＋ Nouvelle marque</button></div>
 <div id="diagnosticBody"></div>
+</section>
+<section id="stock" class="hidden">
+<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px"><button class="secondary" onclick="appGoBack()">← Retour</button><h2 style="margin:0">📦 Stock</h2></div>
+<div class="panel">
+ <div class="stock-toolbar">
+  <div class="stock-brand-picker"><label for="stock-brand-filter">Stock par marque d’équipements</label><select id="stock-brand-filter"><option value="">Choisir une marque…</option></select></div>
+  <button type="button" class="primary" id="stock-add-brand">＋ Créer une marque</button>
+ </div>
+ <p class="muted small" id="stock-brand-selected">Sélectionne une marque.</p>
+ <div class="stock-searchbar">
+  <input id="stock-search" type="search" placeholder="Rechercher référence, désignation ou code-barres…" aria-label="Rechercher une référence dans cette marque" autocomplete="off">
+  <button type="button" id="stock-scan-search" class="secondary">📷 Scanner</button>
+  <button type="button" id="stock-add-item" class="primary">＋ Référence</button>
+ </div>
+ <div id="stock-summary" class="stock-summary"></div>
+ <div id="stock-list"></div>
+ <div id="stock-status" class="muted small"></div>
+</div>
 </section>
 <section id="equipment" class="hidden">
 <div class="row" style="justify-content:space-between;margin-bottom:12px"><button class="secondary" onclick="appGoBack()">← Retour</button><button class="primary" onclick="editEquipmentModel(currentEquipmentId)">✏️ Modifier le modèle</button></div>
@@ -558,7 +580,8 @@ function deleteDiagnosticCodeDocument(id,index,docIndex){const d=diagnosticBrand
 function addDiagnosticDocuments(id){const d=diagnosticBrands.find(x=>x.id===id);if(!d)return;const input=document.createElement("input");input.type="file";input.accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,.txt";input.multiple=true;input.onchange=async()=>{try{const docs=await Promise.all(Array.from(input.files||[]).map(fileToDataURL));d.documents=(d.documents||[]).concat(docs);if(saveDiagnostics())renderDiagnosticBrand()}catch(e){alert("Impossible de lire un document.")}};input.click()}
 function deleteDiagnosticDocument(id,index){const d=diagnosticBrands.find(x=>x.id===id);if(!d)return;if(!confirm("Supprimer ce document ?"))return;d.documents=(d.documents||[]).filter((_,i)=>i!==index);if(saveDiagnostics())renderDiagnosticBrand()}
 
-function goHome(){document.getElementById("client").classList.add("hidden");document.getElementById("equipment").classList.add("hidden");document.getElementById("diagnostic").classList.add("hidden");document.getElementById("home").classList.remove("hidden");if(window.refreshMetierFromCloud)window.refreshMetierFromCloud();search()}
+function openStock(){for(const id of ["home","client","equipment","diagnostic"])document.getElementById(id).classList.add("hidden");document.getElementById("stock").classList.remove("hidden");if(window.stockOpenView)window.stockOpenView();requestAnimationFrame(()=>window.scrollTo(0,0))}
+function goHome(){document.getElementById("stock").classList.add("hidden");if(window.stockCloseScanner)window.stockCloseScanner();document.getElementById("client").classList.add("hidden");document.getElementById("equipment").classList.add("hidden");document.getElementById("diagnostic").classList.add("hidden");document.getElementById("home").classList.remove("hidden");if(window.refreshMetierFromCloud)window.refreshMetierFromCloud();search()}
 loadEquipmentCatalog();loadDiagnostics();renderDiagnosticMenu();document.getElementById("search").addEventListener("input",search);document.getElementById("maintenanceMonthFilter").addEventListener("change",search);document.getElementById("clientSort").addEventListener("change",search);search();
 </script>
 <style id="pending-notifications-palette">
@@ -1216,4 +1239,5 @@ window.metierMediaState=function(){return {current:typeof current==="undefined"?
  diagnosticBrands:typeof diagnosticBrands==="undefined"?[]:diagnosticBrands};};
 </script>
 <script src="./media-sync.js"></script>
+<script src="./stock.js"></script>
 <script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));}</script></body></html>
