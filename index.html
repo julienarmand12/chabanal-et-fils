@@ -1207,6 +1207,7 @@ window.metierMediaSupabase=async function(){
 // Les variables métier sont lexicales dans le script historique ; les exposer en lecture seule.
 window.metierMediaState=function(){return {current:typeof current==="undefined"?null:current,
  clients:typeof clients==="undefined"?[]:clients,
+ currentEquipmentId:typeof currentEquipmentId==="undefined"?null:currentEquipmentId,
  currentDiagnosticId:typeof currentDiagnosticId==="undefined"?null:currentDiagnosticId,
  diagnosticBrands:typeof diagnosticBrands==="undefined"?[]:diagnosticBrands};};
 </script>
