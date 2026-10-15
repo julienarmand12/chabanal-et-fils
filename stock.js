@@ -130,7 +130,7 @@ function articleModal(id){
  const ref=el("stock-article-reference").value.trim(),desc=el("stock-article-designation").value.trim(),barcode=el("stock-article-barcode").value.trim(),raw=el("stock-article-quantity").value,qty=Number(raw);
  if(!ref||!desc){alert("Référence et désignation obligatoires.");return}
  if(!Number.isSafeInteger(qty)||qty<0||qty>99999999||raw===""){alert("La quantité doit être un nombre entier positif ou nul.");return}
- if(items().some(x=>sameStock(x.brandId,selected)&&x.id!==id&&norm(x.reference)===norm(ref))){alert("Cette référence existe déjà dans le stock de cette marque.");return}
+ if((!record||norm(record.reference)!==norm(ref))&&items().some(x=>sameStock(x.brandId,selected)&&x.id!==id&&norm(x.reference)===norm(ref))){alert("Cette référence existe déjà dans le stock de cette marque.");return}
  if(saveChange({kind:"item",id:record?.id||uid(),brandId:record?.brandId||selected,reference:ref,designation:desc,quantity:qty,barcode,deleted:false})){closeModal();render();}
  });
  el("stock-article-scan").addEventListener("click",()=>openScanner(code=>{
