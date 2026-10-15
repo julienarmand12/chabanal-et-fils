@@ -154,7 +154,8 @@ async function sendPending(sb){
    p.conflict={serverVersion:version};
    pending[key]=p;persist(PENDING,pending);continue;
   }
-  const payload={key_name:key,value_json:p.value,version:version+1,updated_at:stamp(),change_reason:"stock-update"};
+  const user=(await sb.auth.getUser()).data.user?.id||null;
+  const payload={key_name:key,value_json:p.value,version:version+1,updated_at:stamp(),updated_by:user,change_reason:"stock-update"};
   const u=version?await sb.from("app_sync_state").update(payload).eq("key_name",key).eq("version",version).select("version"):
    await sb.from("app_sync_state").insert(payload).select("version");
   if(u.error)throw u.error;
