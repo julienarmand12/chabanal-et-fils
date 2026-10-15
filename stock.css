@@ -18,7 +18,7 @@
 #stock .stock-empty{padding:17px;border:1px dashed #356080;border-radius:10px;color:#a8bbd2;margin-top:12px}
 #stock #stock-status{margin-top:14px;line-height:1.55}
 #stock .stock-conflict{padding:9px;border:1px solid #c4773b;border-radius:8px;margin-top:7px}
-#stock #stock-modal,#stock #stock-scan-modal{z-index:100020}
+#stock-modal,#stock-scan-modal{z-index:100020}
 #stock-scan-modal .modal{max-width:530px}
 #stock-scan-video{display:block;width:100%;max-height:350px;object-fit:contain;background:#0a1222;border-radius:10px}
 #stock-scan-reader{width:100%;min-height:160px}
@@ -32,3 +32,6 @@
  #stock .stock-searchbar button{flex:0 0 auto}
  #stock .stock-toolbar button{white-space:normal}
 }
+
+#stock-scan-video[hidden],#stock-scan-reader[hidden]{display:none!important}
+#stock-modal .modal input,#stock-modal .modal select{max-width:100%}
