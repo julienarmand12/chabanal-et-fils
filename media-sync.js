@@ -20,7 +20,10 @@ const group=(scope,id)=>scope+":"+id;
 const dataOk=s=>typeof s==="string"&&/^data:(image\/(jpeg|png|webp|gif)|application\/pdf|text\/plain|application\/(msword|vnd\.openxmlformats-officedocument\.[a-z0-9.-]+|vnd\.ms-excel|vnd\.ms-powerpoint|octet-stream));base64,/i.test(s);
 const isImage=x=>!!x&&/^image\/(jpeg|png|webp|gif)$/i.test(x.mime||"");
 function visible(){
- const c=state().current;
+ const s=state();
+ const modelId=s.currentEquipmentId;
+ if(modelId&&document.getElementById("equipment")&&!document.getElementById("equipment").classList.contains("hidden"))return {scope:"equipment",id:modelId};
+ const c=s.current;
  if(c&&document.getElementById("client")&&!document.getElementById("client").classList.contains("hidden")&&!document.getElementById("e_name"))return {scope:"client",id:c.id};
  const d=state().currentDiagnosticId;
  if(d&&document.getElementById("diagnostic")&&!document.getElementById("diagnostic").classList.contains("hidden"))return {scope:"diagnostic",id:d};
@@ -101,6 +104,12 @@ function draw(scope,id){
    '<div class="photo-grid">'+(all.filter(x=>x.kind==="document").map(fileHtml).join("")||'<span class="muted small">Aucun document.</span>')+'</div>'+showStatus(scope,id);
   const btn=document.getElementById("clientMediaDocButton");
   if(btn)btn.onclick=()=>pickFiles("client",id,"document",null,false);
+ }else if(scope==="equipment"){
+  const root=document.getElementById("equipmentPhotoGallery");
+  if(!root)return;
+  root.innerHTML=all.filter(x=>x.kind==="photo").map(fileHtml).join("")||'<span class="muted small">Aucune photo pour ce modèle.</span>';
+  const status=document.getElementById("equipmentPhotoSyncStatus");
+  if(status)status.innerHTML=showStatus(scope,id);
  }else{
   const body=document.getElementById("diagnosticBody");
   if(!body)return;
@@ -159,8 +168,9 @@ async function addFiles(scope,ownerId,kind,codeId,files){
  await refresh(scope,ownerId);
  return saved===files.length;
 }
-function pickFiles(scope,owner,kind,codeId,multiple){
+function pickFiles(scope,owner,kind,codeId,multiple,capture){
  const inp=document.createElement("input");inp.type="file";
+ if(kind==="photo"&&capture)inp.setAttribute("capture","environment");
  inp.accept=kind==="photo"?"image/*":"application/pdf,image/jpeg,image/png,image/webp,.doc,.docx,.xls,.xlsx,.txt";
  inp.multiple=!!multiple;
  inp.style.display="none";document.body.appendChild(inp);
@@ -321,8 +331,17 @@ window.renderDiagnosticBrand=function(){
 };
 window.metierMediaAddFiles=async function(options){
  const {scope,ownerId,codeId=null,kind,files}=options||{};
- if(!["client","diagnostic"].includes(scope)||!ownerId||!["photo","document"].includes(kind))return false;
+ if(!["client","diagnostic","equipment"].includes(scope)||!ownerId||!["photo","document"].includes(kind))return false;
  return await addFiles(scope,ownerId,kind,codeId,files);
+};
+const originalRenderEquipment=window.renderEquipmentPage;
+window.renderEquipmentPage=function(){
+ if(typeof originalRenderEquipment==="function")originalRenderEquipment();
+ const id=state().currentEquipmentId;
+ const page=document.getElementById("equipment");
+ if(!id||!page||page.classList.contains("hidden"))return;
+ draw("equipment",id);
+ refresh("equipment",id).catch(console.warn);
 };
 window.metierMediaPick=pickFiles;
 document.addEventListener("click",e=>{
