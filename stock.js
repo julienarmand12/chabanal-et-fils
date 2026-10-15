@@ -21,7 +21,7 @@ const all=()=>{
 // Une seule rubrique visible, sans déplacement ni suppression des références existantes.
 const COMBINED_NAME="Ariston / Chaffoteaux";
 const combinedBrand=name=>{
- const n=norm(name).replace(/[\\/&+\\-]+/g," ").replace(/\\s+/g," ").trim();
+ const n=norm(name).replace(/[^a-z0-9]+/g," ").trim();
  return n==="ariston"||n==="chaffoteaux"||n==="ariston chaffoteaux"||n==="chaffoteaux ariston";
 };
 const rawBrands=()=>all().filter(x=>x.kind==="brand"&&!x.deleted);
