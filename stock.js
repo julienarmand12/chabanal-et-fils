@@ -71,9 +71,12 @@ function render(){
  el("stock-summary").innerHTML=active?'<span class="stock-pill">'+allItems.length+' référence(s)</span><span class="stock-pill">'+allItems.reduce((v,x)=>v+Number(x.quantity||0),0)+' pièce(s)</span>':'';
  el("stock-list").innerHTML=!active?'<div class="stock-empty">Sélectionne ou crée une marque.</div>':!matching.length?'<div class="stock-empty">'+(q?"Aucun article correspondant dans cette marque.":"Aucune référence pour cette marque.")+'</div>':matching.map(x=>
   '<div class="stock-article-row" data-stock-id="'+esc(x.id)+'">'+
-  '<div class="stock-ref-cell"><span class="stock-coltitle">Référence</span><div class="stock-reference">'+esc(x.reference)+'</div>'+(x.barcode&&x.barcode!==x.reference?'<div class="muted small">Code-barres : '+esc(x.barcode)+'</div>':'')+(repeatedReferences.get(norm(x.reference))>1?'<div class="muted small">Origine : '+esc(originalBrandName(x.brandId))+'</div>':'')+'</div>'+
+   '<div class="stock-ref-cell"><span class="stock-coltitle">Référence</span><div class="stock-reference">'+esc(x.reference)+'</div>'+(repeatedReferences.get(norm(x.reference))>1?'<div class="muted small">Origine : '+esc(originalBrandName(x.brandId))+'</div>':'')+'</div>'+
   '<div class="stock-designation-cell"><span class="stock-coltitle">Désignation</span><div class="stock-designation">'+esc(x.designation)+'</div></div>'+
-  '<div class="stock-qty-cell"><label class="stock-coltitle" for="stock-qty-'+esc(x.id)+'">Quantité</label><input id="stock-qty-'+esc(x.id)+'" data-stock-quantity="'+esc(x.id)+'" class="stock-qty" type="number" inputmode="numeric" min="0" step="1" value="'+Number(x.quantity||0)+'" aria-label="Quantité de '+esc(x.reference)+'"></div>'+
+   '<div class="stock-qty-cell"><label class="stock-coltitle" for="stock-qty-'+esc(x.id)+'">Quantité</label><div class="stock-quantity-control">'+
+   '<button type="button" class="secondary stock-step" data-stock-step="-1" data-stock-id="'+esc(x.id)+'" aria-label="Diminuer la quantité de '+esc(x.reference)+'" '+(Number(x.quantity||0)<=0?'disabled':'')+'>−</button>'+
+   '<input id="stock-qty-'+esc(x.id)+'" data-stock-quantity="'+esc(x.id)+'" class="stock-qty" type="number" inputmode="numeric" min="0" max="99999999" step="1" value="'+Number(x.quantity||0)+'" aria-label="Quantité de '+esc(x.reference)+'">'+
+   '<button type="button" class="secondary stock-step" data-stock-step="1" data-stock-id="'+esc(x.id)+'" aria-label="Augmenter la quantité de '+esc(x.reference)+'" '+(Number(x.quantity||0)>=99999999?'disabled':'')+'>+</button></div></div>'+
   '<div class="stock-article-actions"><button type="button" class="secondary small" data-stock-edit="'+esc(x.id)+'">Modifier</button><button type="button" class="secondary small" data-stock-delete="'+esc(x.id)+'">Supprimer</button></div></div>'
  ).join("");
  renderStatus();
@@ -122,10 +125,13 @@ function articleModal(id){
  const record=id?items().find(x=>x.id===id):null;
  if(id&&!record)return;
  showModal('<form><div class="row" style="justify-content:space-between"><h2>'+(record?"Modifier":"Ajouter")+' une référence — '+esc(brandName(selected))+'</h2><button class="secondary" type="button" data-stock-close>✕</button></div>'+
- '<div class="modal-grid"><div><label for="stock-article-reference">Référence *</label><div class="row" style="gap:5px"><input id="stock-article-reference" required maxlength="160" value="'+esc(record?.reference||"")+'" placeholder="Saisir la référence"><button type="button" class="secondary" id="stock-article-scan">📷 Scanner</button></div></div>'+
- '<div><label for="stock-article-barcode">Code-barres (facultatif)</label><input id="stock-article-barcode" maxlength="160" value="'+esc(record?.barcode||"")+'" placeholder="EAN / code-barres"></div>'+
+  '<div class="modal-grid"><div><label for="stock-article-reference">Référence * (saisie manuelle)</label><input id="stock-article-reference" required maxlength="160" value="'+esc(record?.reference||"")+'" placeholder="Saisir manuellement la référence"></div>'+
+  '<div><label for="stock-article-barcode">Code-barres (facultatif)</label><div class="stock-barcode-entry"><input id="stock-article-barcode" maxlength="160" value="'+esc(record?.barcode||"")+'" placeholder="EAN / code-barres"><button type="button" class="secondary" id="stock-article-scan" aria-label="Scanner le code-barres">📷 Scanner</button></div></div>'+
  '<div class="full"><label for="stock-article-designation">Désignation *</label><input id="stock-article-designation" maxlength="260" required value="'+esc(record?.designation||"")+'" placeholder="Description de la pièce"></div>'+
- '<div><label for="stock-article-quantity">Quantité *</label><input id="stock-article-quantity" type="number" inputmode="numeric" min="0" max="99999999" step="1" required value="'+(record?Number(record.quantity):0)+'"></div></div>'+
+  '<div><label for="stock-article-quantity">Quantité *</label><div class="stock-quantity-control">'+
+  '<button type="button" class="secondary stock-step" data-stock-modal-step="-1" aria-label="Diminuer la quantité">−</button>'+
+  '<input id="stock-article-quantity" type="number" inputmode="numeric" min="0" max="99999999" step="1" required value="'+(record?Number(record.quantity):0)+'">'+
+  '<button type="button" class="secondary stock-step" data-stock-modal-step="1" aria-label="Augmenter la quantité">+</button></div></div></div>'+
  '<div class="form-actions"><button class="primary" type="submit">💾 Enregistrer</button><button type="button" class="secondary" data-stock-close onclick="this.closest(\'.modal-backdrop\').remove()">Annuler</button></div></form>',()=>{
  const ref=el("stock-article-reference").value.trim(),desc=el("stock-article-designation").value.trim(),barcode=el("stock-article-barcode").value.trim(),raw=el("stock-article-quantity").value,qty=Number(raw);
  if(!ref||!desc){alert("Référence et désignation obligatoires.");return}
@@ -134,11 +140,17 @@ function articleModal(id){
  if(saveChange({kind:"item",id:record?.id||uid(),brandId:record?.brandId||selected,reference:ref,designation:desc,quantity:qty,barcode,deleted:false})){closeModal();render();}
  });
  el("stock-article-scan").addEventListener("click",()=>openScanner(code=>{
-  const bar=el("stock-article-barcode"),ref=el("stock-article-reference");
-  if(!bar||!ref)return;
-  bar.value=code;if(!ref.value.trim())ref.value=code;
-  ref.focus();
+   const bar=el("stock-article-barcode");
+   if(!bar)return;
+   bar.value=code;
+   bar.focus();
  }));
+  el("stock-modal").addEventListener("click",e=>{
+   const btn=e.target.closest("[data-stock-modal-step]");if(!btn)return;
+   const inp=el("stock-article-quantity");if(!inp)return;
+   const n=Number(inp.value),base=Number.isSafeInteger(n)?n:0;
+   inp.value=String(Math.min(99999999,Math.max(0,base+Number(btn.dataset.stockModalStep))));
+  });
 }
 function updateQuantity(id,value){
  const x=items().find(x=>x.id===id);if(!x)return;
@@ -334,6 +346,12 @@ function init(){
  }));
  el("stock-list")?.addEventListener("click",e=>{
   const b=e.target.closest("button");if(!b)return;
+   if(b.dataset.stockStep){
+    const item=items().find(x=>x.id===b.dataset.stockId),step=Number(b.dataset.stockStep);
+    if(!item||Math.abs(step)!==1)return;
+    updateQuantity(item.id,Math.min(99999999,Math.max(0,Number(item.quantity||0)+step)));
+    return;
+   }
   if(b.dataset.stockEdit)articleModal(b.dataset.stockEdit);
   if(b.dataset.stockDelete)deleteArticle(b.dataset.stockDelete);
  });
