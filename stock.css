@@ -6,12 +6,12 @@
 #stock #stock-search{flex:1 1 210px;min-width:0}
 #stock .stock-summary{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 9px}
 #stock .stock-pill{display:inline-flex;gap:5px;padding:5px 9px;border:1px solid #25577f;border-radius:99px;font-size:.82rem;color:#b6d5ee}
-#stock .stock-article-row{display:grid;grid-template-columns:minmax(110px,1.05fr) minmax(130px,1.8fr) minmax(76px,.6fr) auto;gap:10px;align-items:center;padding:11px 10px;border-bottom:1px solid #1b4163;background:#061c36}
+#stock .stock-article-row{display:grid;grid-template-columns:minmax(110px,1.05fr) minmax(130px,1.8fr) minmax(138px,.75fr) auto;gap:10px;align-items:center;padding:11px 10px;border-bottom:1px solid #1b4163;background:#061c36}
 #stock .stock-article-row:first-child{border-radius:9px 9px 0 0}
 #stock .stock-article-row:last-child{border-radius:0 0 9px 9px;border-bottom:0}
 #stock .stock-article-row .stock-reference{font-weight:650;overflow-wrap:anywhere}
 #stock .stock-article-row .stock-designation{overflow-wrap:anywhere}
-#stock .stock-article-row input.stock-qty{width:82px;min-width:74px;max-width:100%;padding:8px;text-align:center}
+#stock .stock-article-row input.stock-qty{width:58px;min-width:0;flex:1 1 58px;padding:8px 2px;text-align:center}
 #stock .stock-coltitle{display:block;font-size:.73rem;color:#9bb5cd;margin-bottom:4px}
 #stock .stock-article-actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
 #stock .stock-article-actions button{padding:7px 9px}
@@ -24,7 +24,7 @@
 #stock-scan-reader{width:100%;min-height:160px}
 #stock .stock-hidden{display:none!important}
 @media(max-width:700px){
- #stock .stock-article-row{grid-template-columns:minmax(0,1fr) minmax(75px,95px);gap:8px}
+ #stock .stock-article-row{grid-template-columns:minmax(0,1fr) minmax(133px,148px);gap:8px}
  #stock .stock-ref-cell{grid-column:1}
  #stock .stock-designation-cell{grid-column:1}
  #stock .stock-qty-cell{grid-column:2;grid-row:1 / span 2;align-self:center}
@@ -35,3 +35,14 @@
 
 #stock-scan-video[hidden],#stock-scan-reader[hidden]{display:none!important}
 #stock-modal .modal input,#stock-modal .modal select{max-width:100%}
+
+/* Ajustement rapide des quantités et scanner dédié au code-barres */
+#stock .stock-quantity-control,#stock-modal .stock-quantity-control,
+#stock-modal .stock-barcode-entry{display:flex;align-items:center;gap:5px;min-width:0}
+#stock .stock-quantity-control .stock-step,#stock-modal .stock-quantity-control .stock-step{
+ flex:0 0 32px;min-width:32px;min-height:36px;padding:5px 3px;font-size:1.15rem;line-height:1;font-weight:700
+}
+#stock-modal .stock-quantity-control input{width:90px;min-width:0;max-width:110px;text-align:center}
+#stock-modal .stock-barcode-entry input{flex:1 1 auto;min-width:0}
+#stock-modal .stock-barcode-entry button{flex:0 0 auto;white-space:nowrap}
+#stock .stock-quantity-control button:disabled,#stock-modal .stock-quantity-control button:disabled{opacity:.45;cursor:not-allowed}
