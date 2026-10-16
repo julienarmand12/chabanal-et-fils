@@ -289,16 +289,29 @@ function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&l
 function mapsUrl(c){const q=[c.address,c.postal,c.city].filter(Boolean).join(", ");return "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(q)}
 function addressLink(c){const q=[c.address,c.postal,c.city].filter(Boolean).join(", ");return q?'<a class="contact-link" href="'+mapsUrl(c)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">📍 '+esc(q)+'</a>':'<span class="muted">Adresse non renseignée</span>'}
 function ratio(c){
- const dates=(c.interventions||[]).map(x=>new Date(x.iso)).filter(x=>!isNaN(x.getTime()));
+ const interventions=Array.isArray(c.interventions)?c.interventions:[];
+ const dates=interventions.map(x=>new Date(x.iso)).filter(x=>!isNaN(x.getTime()));
  if(!dates.length)return "";
  const first=new Date(Math.min(...dates.map(x=>x.getTime())));
  const last=new Date(Math.max(...dates.map(x=>x.getTime())));
- // Années complètes écoulées, arrondies à l'entier inférieur.
+ // Durée entre première et dernière intervention : années arrondies à l'entier supérieur.
  let years=last.getUTCFullYear()-first.getUTCFullYear();
- if(last.getUTCMonth()<first.getUTCMonth()||
-    (last.getUTCMonth()===first.getUTCMonth()&&last.getUTCDate()<first.getUTCDate()))years--;
- // En dessous d'un an, utiliser un an pour éviter une division par zéro.
- return (c.interventions.length/Math.max(1,years)).toFixed(2);
+ const m1=first.getUTCMonth(),m2=last.getUTCMonth();
+ if(m2>m1||(m2===m1&&(
+   last.getUTCDate()>first.getUTCDate()||
+   (last.getUTCDate()===first.getUTCDate()&&(
+     last.getUTCHours()>first.getUTCHours()||
+     (last.getUTCHours()===first.getUTCHours()&&(
+       last.getUTCMinutes()>first.getUTCMinutes()||
+       (last.getUTCMinutes()===first.getUTCMinutes()&&(
+         last.getUTCSeconds()>first.getUTCSeconds()||
+         (last.getUTCSeconds()===first.getUTCSeconds()&&last.getUTCMilliseconds()>first.getUTCMilliseconds())
+       ))
+     ))
+   ))
+ )))years++;
+ // Écart nul ou inférieur à un an : retenir une année minimum.
+ return (interventions.length/Math.max(1,years)).toFixed(2);
 }
 function clientMonthLabel(v){const months=["01 - Janvier","02 - Février","03 - Mars","04 - Avril","05 - Mai","06 - Juin","07 - Juillet","08 - Août","09 - Septembre","10 - Octobre","11 - Novembre","12 - Décembre"];const n=Number(v);return n>=1&&n<=12?months[n-1]:"Non renseigné"}
 function sortedClients(list,mode){const a=[...list];if(mode==="month")return a.sort((x,y)=>{const mx=Number(x.maintenanceMonth)||99,my=Number(y.maintenanceMonth)||99;if(mx!==my)return mx-my;return String(x.name||"").localeCompare(String(y.name||""),"fr",{sensitivity:"base"})});return a.sort((x,y)=>String(x.name||"").localeCompare(String(y.name||""),"fr",{sensitivity:"base"}))}
