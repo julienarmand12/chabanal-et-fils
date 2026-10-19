@@ -259,3 +259,17 @@
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});
   else init();
 })();
+
+/* Charge l'extension PAC multisplit après l'initialisation de l'application. */
+(function(){
+  function loadPacModule(){
+    if(document.querySelector('script[data-chabanal-pac-split]'))return;
+    const script=document.createElement('script');
+    script.src='./pac-split.js';
+    script.dataset.chabanalPacSplit='1';
+    script.async=false;
+    document.body.appendChild(script);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',loadPacModule,{once:true});
+  else loadPacModule();
+})();
