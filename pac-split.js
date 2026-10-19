@@ -6,7 +6,8 @@
 if(window.__pacSplitInstalled)return;
 window.__pacSplitInstalled=true;
 
-const GROUP_KEY="__pac_installations_v1";
+const GROUP_KEY="__pac_installations_v1"; // compatibilité si une ancienne sauvegarde contenait déjà des groupes
+const GROUP_PREFIX="__pac_installation_v1__";
 const SIZES={mono:1,bi:2,tri:3,quadri:4};
 const LABELS={mono:"Mono split",bi:"Bi split",tri:"Tri split",quadri:"Quadri split"};
 const ROLE_LABELS={outdoor:"Groupe extérieur",indoor:"Unité intérieure"};
@@ -20,20 +21,29 @@ const modelById=id=>equipmentModels.find(m=>m.id===id);
 const makeId=()=>typeof crypto!=="undefined"&&crypto.randomUUID?"pac_"+crypto.randomUUID():"pac_"+Date.now()+"_"+Math.random().toString(36).slice(2);
 function installations(cid){
  const bag=equipmentSerialNumbers[cid];
- const a=bag&&typeof bag==="object"?bag[GROUP_KEY]:null;
- return Array.isArray(a)?a.filter(x=>x&&typeof x==="object"&&typeof x.id==="string"):[];
+ if(!bag||typeof bag!=="object"||Array.isArray(bag))return [];
+ const entries=new Map();
+ const legacy=bag[GROUP_KEY];
+ if(Array.isArray(legacy))legacy.forEach(g=>{if(g&&typeof g.id==="string")entries.set(g.id,g)});
+ for(const [key,value] of Object.entries(bag)){
+   if(key.startsWith(GROUP_PREFIX)&&value&&typeof value==="object"&&typeof value.id==="string")entries.set(value.id,value);
+ }
+ return [...entries.values()];
 }
 function saveGroups(cid,value){
  if(!cid)return false;
  const oldBucket=equipmentSerialNumbers[cid];
- const oldValue=oldBucket&&oldBucket[GROUP_KEY];
- if(!oldBucket||typeof oldBucket!=="object"||Array.isArray(oldBucket))equipmentSerialNumbers[cid]={};
- if(value.length)equipmentSerialNumbers[cid][GROUP_KEY]=value;
- else delete equipmentSerialNumbers[cid][GROUP_KEY];
- if(!Object.keys(equipmentSerialNumbers[cid]).length)delete equipmentSerialNumbers[cid];
+ const original=oldBucket&&typeof oldBucket==="object"&&!Array.isArray(oldBucket)?{...oldBucket}:null;
+ const next=original?{...original}:{};
+ // Une clé distincte par installation permet à la synchronisation de fusionner
+ // les modifications de deux installations différentes sur deux téléphones.
+ for(const key of Object.keys(next))if(key===GROUP_KEY||key.startsWith(GROUP_PREFIX))delete next[key];
+ for(const group of value)next[GROUP_PREFIX+group.id]=group;
+ if(Object.keys(next).length)equipmentSerialNumbers[cid]=next;
+ else delete equipmentSerialNumbers[cid];
  if(!saveEquipmentSerialNumbers()){
-   if(oldBucket===undefined)delete equipmentSerialNumbers[cid];
-   else {equipmentSerialNumbers[cid]=oldBucket;if(oldValue===undefined)delete oldBucket[GROUP_KEY];else oldBucket[GROUP_KEY]=oldValue}
+   if(original)equipmentSerialNumbers[cid]=original;
+   else delete equipmentSerialNumbers[cid];
    return false;
  }
  return true;
@@ -46,8 +56,6 @@ function usedRole(modelId){
  }));
  return records;
 }
-const legacyList=(cid)=>Array.isArray(equipmentAssignments[cid])?equipmentAssignments[cid]:[];
-
 const orig={
  renderEquipmentMenu:window.renderEquipmentMenu,
  filterEquipmentModels:window.filterEquipmentModels,
