@@ -293,42 +293,88 @@ window.pacRemoveInstallation=function(id){
  if(!confirm("Retirer cette installation "+(LABELS[record.split]||"PAC")+" et tous ses numéros de série de la fiche client ?"))return;
  if(saveGroups(current.id,groups.filter(g=>g.id!==id)))renderClientEquipments();
 };
-function groupedCard(g){
- const outer=modelById(g.outdoor?.modelId);
+/* Présentation compacte : l'équipement s'ouvre localement au clic sur marque/modèle.
+   Cela ne déclenche pas l'ouverture de la fiche technique et conserve les modifications. */
+function compactTitle(kind,name,extra){
+ return '<summary class="pac-compact-summary">'+
+   '<span class="pac-compact-identity"><span class="pac-compact-type">'+e(kind)+'</span>'+
+   '<span class="pac-compact-name">'+e(name)+'</span>'+
+   (extra?'<span class="pac-compact-extra">'+e(extra)+'</span>':'')+
+   '</span><span class="pac-compact-chevron" aria-hidden="true">⌄</span></summary>';
+}
+function clientModelCard(m,expanded){
+ const key="model:"+m.id,cid=current.id;
+ const serial=getEquipmentSerial(cid,m.id),boiler=m.type==="chaudiere";
+ const details=
+  '<div class="pac-compact-details">'+
+  '<div class="pac-compact-info">📚 '+e(modelDocs(m).length)+' documentation(s) disponibles</div>'+
+  '<div class="pac-compact-field"><label>Numéro de série'+
+  '<input class="model-search" type="text" maxlength="200" data-equipment-serial="'+e(m.id)+'" value="'+e(serial)+'" placeholder="Saisir le numéro de série"></label></div>'+
+  (boiler?
+    '<div class="pac-compact-field"><label>Année de chaudière'+
+    '<input class="model-search pac-year-input" type="text" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" data-equipment-year="'+e(m.id)+'" value="'+e(getEquipmentYear(cid,m.id))+'" placeholder="Ex. 2020"></label></div>'+
+    (getModelBoilerType(m)?'<div class="pac-compact-info">Type : '+e(getModelBoilerTypeLabel(m))+'</div>':'')
+    :"")+
+  '<div class="pac-compact-actions"><button type="button" class="secondary small" data-equipment-open-model="'+e(m.id)+'">Voir la fiche du modèle ›</button>'+
+  '<button type="button" class="secondary small" data-equipment-remove="'+e(m.id)+'">Retirer du client</button></div></div>';
+ return '<details class="card pac-compact-card" data-equipment-card="'+e(key)+'" '+(expanded.has(key)?"open":"")+'>'+
+  compactTitle(eqTypeShort(m.type),modelName(m),"")+
+  details+'</details>';
+}
+function groupedCard(g,expanded){
+ const key="group:"+g.id,outer=modelById(g.outdoor?.modelId);
  const inner=Array.isArray(g.indoors)?g.indoors:[];
  const count=SIZES[g.split]||inner.length;
- return '<div class="card pac-install-card"><div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap">'+
- '<div><span class="badge">❄️ PAC air/air · '+e(LABELS[g.split]||"Installation")+'</span><h3 style="margin:9px 0 4px">Groupe extérieur</h3></div>'+
- '<div class="row" style="gap:6px"><button type="button" class="secondary small" data-pac-edit="'+e(g.id)+'">Modifier</button>'+
- '<button type="button" class="secondary small" data-pac-remove="'+e(g.id)+'">Retirer</button></div></div>'+
- '<div class="pac-unit-entry"><div class="muted small">Modèle groupe extérieur</div>'+
- (outer?'<button class="pac-model-link" type="button" data-pac-model="'+e(outer.id)+'">'+e(modelName(outer))+' ›</button>':'<strong>Modèle introuvable</strong>')+
- '<div class="muted small">N° série : '+e(g.outdoor?.serial||"Non renseigné")+'</div></div>'+
- '<h4 style="margin:12px 0 7px">Unités intérieures ('+inner.length+'/'+count+')</h4>'+
- inner.map((u,i)=>{
+ const title=outer?modelName(outer):"Groupe extérieur — modèle introuvable";
+ let details='<div class="pac-compact-details">'+
+  '<div class="pac-compact-info"><strong>Groupe extérieur</strong></div>'+
+  '<div class="pac-unit-entry">'+
+  (outer?'<button type="button" class="pac-model-link" data-pac-model="'+e(outer.id)+'">'+e(modelName(outer))+' ›</button>':'<strong>Modèle introuvable</strong>')+
+  '<div class="muted small">N° de série : '+e(g.outdoor?.serial||"Non renseigné")+'</div></div>'+
+  '<h4 class="pac-compact-inner-heading">Unités intérieures ('+inner.length+'/'+count+')</h4>';
+ details+=inner.map((u,i)=>{
   const m=modelById(u.modelId);
   return '<div class="pac-unit-entry"><div class="muted small">Unité intérieure '+(i+1)+'</div>'+
-  (m?'<button class="pac-model-link" type="button" data-pac-model="'+e(m.id)+'">'+e(modelName(m))+' ›</button>':'<strong>Modèle introuvable</strong>')+
-  '<div class="muted small">N° série : '+e(u.serial||"Non renseigné")+'</div></div>';
- }).join("")+'</div>';
+   (m?'<button type="button" class="pac-model-link" data-pac-model="'+e(m.id)+'">'+e(modelName(m))+' ›</button>':'<strong>Modèle introuvable</strong>')+
+   '<div class="muted small">N° de série : '+e(u.serial||"Non renseigné")+'</div></div>';
+ }).join("");
+ details+='<div class="pac-compact-actions">'+
+  '<button type="button" class="secondary small" data-pac-edit="'+e(g.id)+'">Modifier l’installation</button>'+
+  '<button type="button" class="secondary small" data-pac-remove="'+e(g.id)+'">Retirer du client</button></div></div>';
+ return '<details class="card pac-compact-card" data-equipment-card="'+e(key)+'" '+(expanded.has(key)?"open":"")+'>'+
+  compactTitle("PAC air/air",title,(LABELS[g.split]||"Multisplit")+" · "+inner.length+" unité(s) intérieure(s)")+
+  details+'</details>';
 }
 window.renderClientEquipments=function(){
- orig.renderClientEquipments();
  const box=get("clientEquipmentList");if(!box||!current)return;
+ // Restaurer les éléments déjà dépliés après une synchronisation ou la modification d'un champ.
+ const sameClient=box.dataset.equipmentClientId===String(current.id);
+ const expanded=new Set(sameClient?Array.from(box.querySelectorAll("details.pac-compact-card[open]"))
+   .map(x=>x.dataset.equipmentCard).filter(Boolean):[]);
+ const ids=Array.isArray(equipmentAssignments[current.id])?equipmentAssignments[current.id]:[];
+ const models=ids.map(id=>modelById(id)).filter(Boolean);
  const groups=installations(current.id);
- if(!groups.length)return;
- // Les anciennes PAC individuelles ne sont ni converties ni supprimées.
- if(box.querySelector(".equipment-empty"))box.innerHTML="";
- let grid=box.querySelector(".grid");
- if(!grid){grid=document.createElement("div");grid.className="grid";box.appendChild(grid)}
- grid.insertAdjacentHTML("beforeend",groups.map(groupedCard).join(""));
- if(!box.dataset.pacCardBound){
-   box.dataset.pacCardBound="1";
+ const cards=models.map(m=>clientModelCard(m,expanded)).concat(groups.map(g=>groupedCard(g,expanded)));
+ box.innerHTML=cards.length?'<div class="pac-compact-list">'+cards.join("")+'</div>':
+  '<div class="equipment-empty">Aucun équipement attribué à ce client.</div>';
+ box.dataset.equipmentClientId=String(current.id);
+ if(!box.dataset.pacAccordionBound){
+   box.dataset.pacAccordionBound="1";
    box.addEventListener("click",ev=>{
-     const edit=ev.target.closest("[data-pac-edit]"),remove=ev.target.closest("[data-pac-remove]"),model=ev.target.closest("[data-pac-model]");
-     if(edit){ev.stopPropagation();newWizard(edit.dataset.pacEdit)}
-     else if(remove){ev.stopPropagation();window.pacRemoveInstallation(remove.dataset.pacRemove)}
-     else if(model){ev.stopPropagation();openEquipment(model.dataset.pacModel)}
+     const btn=ev.target.closest("button[data-pac-edit],button[data-pac-remove],button[data-pac-model],button[data-equipment-open-model],button[data-equipment-remove]");
+     if(!btn||!box.contains(btn))return;
+     ev.stopPropagation();
+     if(btn.dataset.pacEdit)return newWizard(btn.dataset.pacEdit);
+     if(btn.dataset.pacRemove)return window.pacRemoveInstallation(btn.dataset.pacRemove);
+     if(btn.dataset.pacModel)return openEquipment(btn.dataset.pacModel);
+     if(btn.dataset.equipmentOpenModel)return openEquipment(btn.dataset.equipmentOpenModel);
+     if(btn.dataset.equipmentRemove)return removeEquipmentFromClient(btn.dataset.equipmentRemove);
+   });
+   box.addEventListener("change",ev=>{
+     if(ev.target.matches("[data-equipment-serial]"))
+       saveClientEquipmentSerial(ev.target.dataset.equipmentSerial,ev.target.value);
+     else if(ev.target.matches("[data-equipment-year]"))
+       saveClientEquipmentYear(ev.target.dataset.equipmentYear,ev.target.value);
    });
  }
 };
@@ -345,6 +391,25 @@ css.textContent=
 '.pac-indoor-row legend{padding:0 5px;font-weight:700}'+
 '.pac-install-card{grid-column:1/-1;min-width:0}'+
 '.pac-unit-entry{padding:10px 12px;margin-top:7px;border:1px solid #294e72;border-radius:9px;overflow-wrap:anywhere}'+
-'.pac-model-link{padding:3px 0;text-align:left;color:#8fc9ff;background:transparent;border:0;text-decoration:underline;font:inherit;cursor:pointer}';
+'.pac-model-link{padding:3px 0;text-align:left;color:#8fc9ff;background:transparent;border:0;text-decoration:underline;font:inherit;cursor:pointer}'+
+'.pac-compact-list{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}'+
+'.pac-compact-card{padding:0!important;margin:0;min-width:0;overflow:hidden}'+
+'.pac-compact-summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 13px;cursor:pointer;min-height:46px}'+
+'.pac-compact-summary::-webkit-details-marker{display:none}'+
+'.pac-compact-identity{display:flex;flex-direction:column;gap:3px;min-width:0;overflow-wrap:anywhere}'+
+'.pac-compact-type{font-size:.73rem;color:#9ec9ee;font-weight:600}'+
+'.pac-compact-name{font-size:1rem;font-weight:700;color:#edf6ff;line-height:1.3}'+
+'.pac-compact-extra{font-size:.78rem;color:#b3c9dc}'+
+'.pac-compact-chevron{font-size:1.15rem;color:#a9d8ff;flex-shrink:0;transition:transform .15s ease}'+
+'.pac-compact-card[open] .pac-compact-chevron{transform:rotate(180deg)}'+
+'.pac-compact-summary:focus-visible{outline:2px solid #75baff;outline-offset:-2px}'+
+'.pac-compact-details{border-top:1px solid #2a4e75;padding:12px 13px 14px}'+
+'.pac-compact-info{font-size:.86rem;color:#b8cde0;margin-bottom:9px}'+
+'.pac-compact-field{margin:8px 0}'+
+'.pac-compact-field label{display:block;font-size:.85rem;color:#c5d9ed}'+
+'.pac-compact-field input{display:block;box-sizing:border-box;width:100%;max-width:420px;margin-top:5px}'+
+'.pac-compact-field input.pac-year-input{max-width:130px}'+
+'.pac-compact-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}'+
+'.pac-compact-inner-heading{font-size:.95rem;margin:12px 0 7px}';
 document.head.appendChild(css);
 })();
