@@ -277,13 +277,6 @@
       diagnostic.async=false;
       document.body.appendChild(diagnostic);
     }
-    if(!document.querySelector('script[data-chabanal-bartonek-recovery]')){
-      const recovery=document.createElement('script');
-      recovery.src='./bartonek-recovery.js';
-      recovery.dataset.chabanalBartonekRecovery='1';
-      recovery.async=false;
-      document.body.appendChild(recovery);
-    }
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',loadPacModule,{once:true});
   else loadPacModule();
