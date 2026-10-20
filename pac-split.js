@@ -187,6 +187,13 @@ window.deleteEquipmentModel=function(id){
  return orig.deleteEquipmentModel(id);
 };
 
+function validYear(v){return !String(v||"").trim()||/^\d{4}$/.test(String(v).trim())}
+function yearLabel(v){return v?String(v):"Non renseignée"}
+function serialLabel(v){return v?String(v):"Non renseigné"}
+function dataSummary(serial,year){
+ return '<span class="pac-compact-info">N° de série : '+e(serialLabel(serial))+'</span>'+
+  '<span class="pac-compact-info">Année : '+e(yearLabel(year))+'</span>';
+}
 function pickModels(kind,chosen){
  const list=pacModels(kind);
  return '<option value="">Choisir un modèle…</option>'+list.map(m=>
@@ -195,13 +202,13 @@ function pickModels(kind,chosen){
 function introData(){
  if(!draft)return;
  draft.split=get("pac-split-size")?.value||draft.split;
- draft.outdoor={modelId:get("pac-outdoor-model")?.value||"",serial:get("pac-outdoor-serial")?.value.trim()||""};
+ draft.outdoor={modelId:get("pac-outdoor-model")?.value||"",serial:get("pac-outdoor-serial")?.value.trim()||"",year:get("pac-outdoor-year")?.value.trim()||""};
 }
 function indoorData(){
  if(!draft)return;
  const arr=[];
  const count=SIZES[draft.split]||1;
- for(let i=0;i<count;i++)arr.push({modelId:get("pac-indoor-model-"+i)?.value||"",serial:get("pac-indoor-serial-"+i)?.value.trim()||""});
+ for(let i=0;i<count;i++)arr.push({modelId:get("pac-indoor-model-"+i)?.value||"",serial:get("pac-indoor-serial-"+i)?.value.trim()||"",year:get("pac-indoor-year-"+i)?.value.trim()||""});
  draft.indoors=arr;
 }
 function wizardMarkup(){
@@ -217,6 +224,7 @@ function wizardMarkup(){
    '<h3>Groupe extérieur</h3>'+
    '<div><label for="pac-outdoor-model">Modèle du groupe extérieur *</label><select id="pac-outdoor-model" class="model-search">'+pickModels("outdoor",draft.outdoor.modelId)+'</select></div>'+
    '<div><label for="pac-outdoor-serial">Numéro de série du groupe extérieur</label><input id="pac-outdoor-serial" maxlength="180" value="'+e(draft.outdoor.serial)+'" placeholder="Numéro de série extérieur"></div>'+
+   '<div><label for="pac-outdoor-year">Année du groupe extérieur</label><input id="pac-outdoor-year" type="text" inputmode="numeric" maxlength="4" value="'+e(draft.outdoor.year||"")+'" placeholder="Ex. 2020"></div>'+
    '</div><div class="form-actions"><button type="button" class="primary" data-pac-action="next">Suivant : unités intérieures →</button><button type="button" class="secondary" data-pac-action="close">Annuler</button></div>';
  } else {
    inner+='<p>'+LABELS[draft.split]+' — <strong>'+n+' unité'+(n===1?"":"s")+' intérieure'+(n===1?"":"s")+' à renseigner.</strong> Un même modèle peut être choisi plusieurs fois.</p>';
@@ -224,7 +232,8 @@ function wizardMarkup(){
      const u=draft.indoors[i]||{modelId:"",serial:""};
      return '<fieldset class="pac-indoor-row"><legend>Unité intérieure '+(i+1)+' / '+n+'</legend>'+
      '<label for="pac-indoor-model-'+i+'">Modèle *</label><select id="pac-indoor-model-'+i+'" class="model-search">'+pickModels("indoor",u.modelId)+'</select>'+
-     '<label for="pac-indoor-serial-'+i+'">Numéro de série</label><input id="pac-indoor-serial-'+i+'" maxlength="180" value="'+e(u.serial)+'" placeholder="Numéro de série unité '+(i+1)+'"></fieldset>';
+     '<label for="pac-indoor-serial-'+i+'">Numéro de série</label><input id="pac-indoor-serial-'+i+'" maxlength="180" value="'+e(u.serial)+'" placeholder="Numéro de série unité '+(i+1)+'">'+
+     '<label for="pac-indoor-year-'+i+'">Année</label><input id="pac-indoor-year-'+i+'" type="text" inputmode="numeric" maxlength="4" value="'+e(u.year||"")+'" placeholder="Ex. 2020"></fieldset>';
    }).join("")+'</div>'+
    '<div class="form-actions"><button type="button" class="secondary" data-pac-action="back">← Retour</button>'+
    '<button type="button" class="primary" data-pac-action="save">💾 Enregistrer l’installation</button></div>';
@@ -247,8 +256,8 @@ function newWizard(editId){
  if(editId&&!existing)return;
  draft={
   id:existing?.id||null,clientId:current.id,step:1,split:existing?.split in SIZES?existing.split:"mono",
-  outdoor:{modelId:existing?.outdoor?.modelId||"",serial:existing?.outdoor?.serial||""},
-  indoors:Array.isArray(existing?.indoors)?existing.indoors.map(u=>({modelId:u.modelId||"",serial:u.serial||""})):[]
+  outdoor:{modelId:existing?.outdoor?.modelId||"",serial:existing?.outdoor?.serial||"",year:existing?.outdoor?.year||""},
+  indoors:Array.isArray(existing?.indoors)?existing.indoors.map(u=>({modelId:u.modelId||"",serial:u.serial||"",year:u.year||""})):[]
  };
  closeAssignModal();
  const backdrop=document.createElement("div");backdrop.id="pac-install-modal";backdrop.className="modal-backdrop";
@@ -262,12 +271,14 @@ function newWizard(editId){
    if(action==="next"){
      introData();
      if(!draft.outdoor.modelId){alert("Sélectionne le modèle du groupe extérieur.");return}
+     if(!validYear(draft.outdoor.year)){alert("L'année du groupe extérieur doit comporter 4 chiffres.");return}
      draft.step=2;renderWizard();return;
    }
    if(action==="back"){indoorData();draft.step=1;renderWizard();return}
    if(action==="save"){
      indoorData();
      if(!draft.indoors.every(x=>x.modelId)){alert("Sélectionne le modèle de chaque unité intérieure.");return}
+     if(!draft.indoors.every(x=>validYear(x.year))){alert("Les années des unités intérieures doivent comporter 4 chiffres.");return}
      const saved={
       id:draft.id||makeId(),split:draft.split,outdoor:{...draft.outdoor},
       indoors:draft.indoors.map(u=>({...u})),updatedAt:new Date().toISOString()
@@ -304,18 +315,14 @@ function compactTitle(kind,name,extra){
 }
 function clientModelCard(m,expanded){
  const key="model:"+m.id,cid=current.id;
- const serial=getEquipmentSerial(cid,m.id),boiler=m.type==="chaudiere";
- const details=
-  '<div class="pac-compact-details">'+
+ const serial=getEquipmentSerial(cid,m.id),year=getEquipmentYear(cid,m.id);
+ const details='<div class="pac-compact-details">'+
   '<div class="pac-compact-info">📚 '+e(modelDocs(m).length)+' documentation(s) disponibles</div>'+
-  '<div class="pac-compact-field"><label>Numéro de série'+
-  '<input class="model-search" type="text" maxlength="200" data-equipment-serial="'+e(m.id)+'" value="'+e(serial)+'" placeholder="Saisir le numéro de série"></label></div>'+
-  (boiler?
-    '<div class="pac-compact-field"><label>Année de chaudière'+
-    '<input class="model-search pac-year-input" type="text" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" data-equipment-year="'+e(m.id)+'" value="'+e(getEquipmentYear(cid,m.id))+'" placeholder="Ex. 2020"></label></div>'+
-    (getModelBoilerType(m)?'<div class="pac-compact-info">Type : '+e(getModelBoilerTypeLabel(m))+'</div>':'')
-    :"")+
-  '<div class="pac-compact-actions"><button type="button" class="secondary small" data-equipment-open-model="'+e(m.id)+'">Voir la fiche du modèle ›</button>'+
+  '<div class="pac-meta-overview">'+dataSummary(serial,year)+'</div>'+
+  (m.type==="chaudiere"&&getModelBoilerType(m)?'<div class="pac-compact-info">Type : '+e(getModelBoilerTypeLabel(m))+'</div>':"")+
+  '<div class="pac-compact-actions">'+
+  '<button type="button" class="secondary small" data-equipment-edit-info="'+e(m.id)+'">✏️ '+(serial||year?"Modifier":"Ajouter")+' n° de série et année</button>'+
+  '<button type="button" class="secondary small" data-equipment-open-model="'+e(m.id)+'">Voir la fiche du modèle ›</button>'+
   '<button type="button" class="secondary small" data-equipment-remove="'+e(m.id)+'">Retirer du client</button></div></div>';
  return '<details class="card pac-compact-card" data-equipment-card="'+e(key)+'" '+(expanded.has(key)?"open":"")+'>'+
   compactTitle(eqTypeShort(m.type),modelName(m),"")+
@@ -330,13 +337,15 @@ function groupedCard(g,expanded){
   '<div class="pac-compact-info"><strong>Groupe extérieur</strong></div>'+
   '<div class="pac-unit-entry">'+
   (outer?'<button type="button" class="pac-model-link" data-pac-model="'+e(outer.id)+'">'+e(modelName(outer))+' ›</button>':'<strong>Modèle introuvable</strong>')+
-  '<div class="muted small">N° de série : '+e(g.outdoor?.serial||"Non renseigné")+'</div></div>'+
-  '<h4 class="pac-compact-inner-heading">Unités intérieures ('+inner.length+'/'+count+')</h4>';
+  '<div class="pac-meta-overview">'+dataSummary(g.outdoor?.serial,g.outdoor?.year)+'</div>'+
+  '<button type="button" class="secondary small pac-meta-unit-button" data-pac-edit-unit="'+e(g.id)+'" data-pac-unit-index="outdoor">✏️ '+(g.outdoor?.serial||g.outdoor?.year?"Modifier":"Ajouter")+' n° de série et année</button>'+
+  '</div><h4 class="pac-compact-inner-heading">Unités intérieures ('+inner.length+'/'+count+')</h4>';
  details+=inner.map((u,i)=>{
   const m=modelById(u.modelId);
   return '<div class="pac-unit-entry"><div class="muted small">Unité intérieure '+(i+1)+'</div>'+
    (m?'<button type="button" class="pac-model-link" data-pac-model="'+e(m.id)+'">'+e(modelName(m))+' ›</button>':'<strong>Modèle introuvable</strong>')+
-   '<div class="muted small">N° de série : '+e(u.serial||"Non renseigné")+'</div></div>';
+   '<div class="pac-meta-overview">'+dataSummary(u.serial,u.year)+'</div>'+
+   '<button type="button" class="secondary small pac-meta-unit-button" data-pac-edit-unit="'+e(g.id)+'" data-pac-unit-index="'+i+'">✏️ '+(u.serial||u.year?"Modifier":"Ajouter")+' n° de série et année</button></div>';
  }).join("");
  details+='<div class="pac-compact-actions">'+
   '<button type="button" class="secondary small" data-pac-edit="'+e(g.id)+'">Modifier l’installation</button>'+
@@ -344,6 +353,96 @@ function groupedCard(g,expanded){
  return '<details class="card pac-compact-card" data-equipment-card="'+e(key)+'" '+(expanded.has(key)?"open":"")+'>'+
   compactTitle("PAC air/air",title,(LABELS[g.split]||"Multisplit")+" · "+inner.length+" unité(s) intérieure(s)")+
   details+'</details>';
+}
+
+/* Les valeurs affichées sur la fiche sont en lecture seule. L'édition passe
+   par une fenêtre dédiée, sans sauvegarde ni synchronisation avant Enregistrer. */
+function openMetaEditor(modelId,groupId,index){
+ if(!current)return;
+ if(get("pac-meta-editor"))return;
+ const cid=current.id,groupMode=Boolean(groupId);
+ let label="",beforeSerial="",beforeYear="",beforeGroup=null,targetModelId=modelId;
+ if(groupMode){
+  const group=installations(cid).find(x=>x.id===groupId);
+  if(!group)return;
+  const u=index==="outdoor"?group.outdoor:group.indoors?.[Number(index)];
+  if(!u)return;
+  const m=modelById(u.modelId);
+  beforeGroup=JSON.stringify(group);
+  beforeSerial=u.serial||"";beforeYear=u.year||"";
+  label=(index==="outdoor"?"Groupe extérieur":"Unité intérieure "+(Number(index)+1))+
+   " — "+(m?modelName(m):"Modèle introuvable");
+  targetModelId=u.modelId;
+ }else{
+  const exists=Array.isArray(equipmentAssignments[cid])&&equipmentAssignments[cid].includes(modelId);
+  const m=modelById(modelId);
+  if(!exists||!m)return;
+  beforeSerial=getEquipmentSerial(cid,modelId);
+  beforeYear=getEquipmentYear(cid,modelId);
+  label=eqTypeShort(m.type)+" — "+modelName(m);
+ }
+ const backdrop=document.createElement("div");
+ backdrop.id="pac-meta-editor";backdrop.className="modal-backdrop";
+ backdrop.innerHTML='<div class="modal pac-meta-dialog" role="dialog" aria-modal="true" aria-labelledby="pac-meta-title">'+
+ '<div class="row" style="justify-content:space-between;gap:8px"><h2 id="pac-meta-title">Numéro de série et année</h2>'+
+ '<button type="button" class="secondary" data-meta-close aria-label="Fermer">✕</button></div>'+
+ '<p class="pac-meta-device-title">'+e(label)+'</p>'+
+ '<label for="pac-meta-serial">Numéro de série</label>'+
+ '<input id="pac-meta-serial" type="text" maxlength="200" autocomplete="off" value="'+e(beforeSerial)+'" placeholder="Numéro de série">'+
+ '<label for="pac-meta-year">Année de l’équipement</label>'+
+ '<input id="pac-meta-year" type="text" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" autocomplete="off" value="'+e(beforeYear)+'" placeholder="Ex. 2020">'+
+ '<p class="muted small">Aucune modification n’est enregistrée ou synchronisée pendant la saisie. Seul le bouton Enregistrer valide les deux champs.</p>'+
+ '<div class="pac-meta-feedback" role="alert" aria-live="polite"></div>'+
+ '<div class="form-actions"><button type="button" class="primary" data-meta-save>💾 Enregistrer</button>'+
+ '<button type="button" class="secondary" data-meta-close>Annuler</button></div>'+
+ '</div>';
+ document.body.appendChild(backdrop);
+ const warn=text=>{const f=backdrop.querySelector(".pac-meta-feedback");if(f)f.textContent=text};
+ const close=()=>backdrop.remove();
+ backdrop.addEventListener("click",ev=>{
+  if(ev.target===backdrop||ev.target.closest("[data-meta-close]")){close();return}
+  const btn=ev.target.closest("[data-meta-save]");
+  if(!btn)return;
+  const serial=get("pac-meta-serial")?.value.trim()||"",year=get("pac-meta-year")?.value.trim()||"";
+  if(!validYear(year)){warn("Indique une année à 4 chiffres (ex. 2020), ou laisse le champ vide.");return}
+  if(!current||current.id!==cid){warn("Tu as changé de fiche client : aucune donnée enregistrée.");return}
+  const unchanged=serial===beforeSerial&&year===beforeYear;
+  if(unchanged){close();return}
+  btn.disabled=true;
+  try{
+   let saved=false;
+   if(groupMode){
+    const groups=installations(cid),at=groups.findIndex(g=>g.id===groupId);
+    if(at<0||JSON.stringify(groups[at])!==beforeGroup){warn("Cette installation a changé depuis l’ouverture : aucune donnée écrasée.");return}
+    const copy=JSON.parse(beforeGroup);
+    const unit=index==="outdoor"?copy.outdoor:copy.indoors?.[Number(index)];
+    if(!unit||unit.modelId!==targetModelId){warn("L'équipement a changé. Rouvre la fenêtre.");return}
+    unit.serial=serial;unit.year=year;
+    groups[at]=copy;
+    saved=saveGroups(cid,groups);
+   }else{
+    const assigned=Array.isArray(equipmentAssignments[cid])&&equipmentAssignments[cid].includes(modelId);
+    if(!assigned||getEquipmentSerial(cid,modelId)!==beforeSerial||getEquipmentYear(cid,modelId)!==beforeYear){
+     warn("Les informations de cet équipement ont changé. Rouvre la fenêtre pour éviter un écrasement.");return;
+    }
+    const previous=equipmentSerialNumbers[cid],next=previous&&typeof previous==="object"&&!Array.isArray(previous)?{...previous}:{};
+    if(serial)next[modelId]=serial;else delete next[modelId];
+    if(year)next["__year__"+modelId]=year;else delete next["__year__"+modelId];
+    if(Object.keys(next).length)equipmentSerialNumbers[cid]=next;else delete equipmentSerialNumbers[cid];
+    saved=saveEquipmentSerialNumbers();
+    if(!saved){
+      if(previous)equipmentSerialNumbers[cid]=previous;else delete equipmentSerialNumbers[cid];
+    }
+   }
+   if(saved){
+    close();
+    if(current?.id===cid)renderClientEquipments();
+   }else warn("Enregistrement impossible. Les anciennes informations sont conservées.");
+  }catch(error){
+   warn("Enregistrement impossible. Les anciennes informations sont conservées.");
+  }finally{btn.disabled=false}
+ });
+ backdrop.querySelector("#pac-meta-serial")?.focus();
 }
 window.renderClientEquipments=function(){
  const box=get("clientEquipmentList");if(!box||!current)return;
@@ -361,20 +460,16 @@ window.renderClientEquipments=function(){
  if(!box.dataset.pacAccordionBound){
    box.dataset.pacAccordionBound="1";
    box.addEventListener("click",ev=>{
-     const btn=ev.target.closest("button[data-pac-edit],button[data-pac-remove],button[data-pac-model],button[data-equipment-open-model],button[data-equipment-remove]");
+     const btn=ev.target.closest("button[data-pac-edit],button[data-pac-remove],button[data-pac-model],button[data-equipment-open-model],button[data-equipment-remove],button[data-equipment-edit-info],button[data-pac-edit-unit]");
      if(!btn||!box.contains(btn))return;
      ev.stopPropagation();
+     if(btn.dataset.equipmentEditInfo)return openMetaEditor(btn.dataset.equipmentEditInfo,null,null);
+     if(btn.dataset.pacEditUnit)return openMetaEditor(null,btn.dataset.pacEditUnit,btn.dataset.pacUnitIndex);
      if(btn.dataset.pacEdit)return newWizard(btn.dataset.pacEdit);
      if(btn.dataset.pacRemove)return window.pacRemoveInstallation(btn.dataset.pacRemove);
      if(btn.dataset.pacModel)return openEquipment(btn.dataset.pacModel);
      if(btn.dataset.equipmentOpenModel)return openEquipment(btn.dataset.equipmentOpenModel);
      if(btn.dataset.equipmentRemove)return removeEquipmentFromClient(btn.dataset.equipmentRemove);
-   });
-   box.addEventListener("change",ev=>{
-     if(ev.target.matches("[data-equipment-serial]"))
-       saveClientEquipmentSerial(ev.target.dataset.equipmentSerial,ev.target.value);
-     else if(ev.target.matches("[data-equipment-year]"))
-       saveClientEquipmentYear(ev.target.dataset.equipmentYear,ev.target.value);
    });
  }
 };
@@ -410,6 +505,12 @@ css.textContent=
 '.pac-compact-field input{display:block;box-sizing:border-box;width:100%;max-width:420px;margin-top:5px}'+
 '.pac-compact-field input.pac-year-input{max-width:130px}'+
 '.pac-compact-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}'+
-'.pac-compact-inner-heading{font-size:.95rem;margin:12px 0 7px}';
+'.pac-compact-inner-heading{font-size:.95rem;margin:12px 0 7px}'+
+'.pac-meta-overview{display:grid;gap:5px;margin:10px 0}.pac-meta-overview .pac-compact-info{display:block;margin:0;overflow-wrap:anywhere}'+
+'.pac-meta-unit-button{margin-top:5px}.pac-meta-dialog{max-width:520px;max-height:90dvh;overflow-y:auto}'+
+'.pac-meta-dialog label{display:block;margin:11px 0 6px;font-size:.9rem;font-weight:650}'+
+'.pac-meta-dialog input{display:block;width:100%;max-width:100%;box-sizing:border-box}'+
+'.pac-meta-device-title{color:#a9d9ff;overflow-wrap:anywhere}'+
+'.pac-meta-feedback{font-size:.9rem;color:#ffbd94;margin:9px 0}';
 document.head.appendChild(css);
 })();
