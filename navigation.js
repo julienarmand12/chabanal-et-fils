@@ -269,6 +269,14 @@
     script.dataset.chabanalPacSplit='1';
     script.async=false;
     document.body.appendChild(script);
+    // Module de diagnostic entièrement en lecture seule (aucun changement métier).
+    if(!document.querySelector('script[data-chabanal-sync-diagnostic]')){
+      const diagnostic=document.createElement('script');
+      diagnostic.src='./sync-diagnostic.js';
+      diagnostic.dataset.chabanalSyncDiagnostic='1';
+      diagnostic.async=false;
+      document.body.appendChild(diagnostic);
+    }
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',loadPacModule,{once:true});
   else loadPacModule();
