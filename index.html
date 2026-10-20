@@ -139,6 +139,24 @@ header{background:linear-gradient(90deg,#140e24,#201432 68%,#160f2c);border-bott
  setInterval(updateMonthlyBackground,60000);
 })();
 </script>
+<style id="chabanal-remove-bartonek-ui">#cloudSyncPanel .bartonek-recovery{display:none!important}</style>
+<script>
+(function(){
+  "use strict";
+  function disableOldRecoveryUi(){
+    const panel=document.getElementById("cloudSyncPanel");
+    if(!panel)return;
+    const remove=()=>{
+      panel.querySelectorAll(".bartonek-recovery").forEach(node=>node.remove());
+    };
+    remove();
+    new MutationObserver(remove).observe(panel,{childList:true,subtree:true});
+  }
+  if(document.readyState==="loading")
+    document.addEventListener("DOMContentLoaded",disableOldRecoveryUi,{once:true});
+  else disableOldRecoveryUi();
+})();
+</script>
 </head>
 <body><div id="authOverlay" class="auth-overlay">
 <div class="auth-box">
@@ -621,7 +639,7 @@ loadEquipmentCatalog();loadDiagnostics();renderDiagnosticMenu();document.getElem
   }catch(e){}
 })();
 </script>
-<script src="./navigation.js"></script>
+<script src="./navigation.js?v=20261020-bartonek-cleanup2"></script>
 <script src="./notifications.js"></script>
 <!-- V2 CLOUD SYNC ENGINE
      Backend: Supabase Postgres + Auth + Realtime + Storage.
