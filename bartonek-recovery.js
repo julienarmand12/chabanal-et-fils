@@ -109,6 +109,20 @@ function mergedValue(state,remote){
  }
  return next;
 }
+function downloadBackup(key){
+ const raw=localStorage.getItem(key);
+ if(!raw){message("Sauvegarde locale introuvable sur cet appareil.",true);return}
+ try{
+  const blob=new Blob([raw],{type:"application/json"});
+  const address=URL.createObjectURL(blob),anchor=document.createElement("a");
+  anchor.href=address;
+  anchor.download="chabanal_bartonek_sauvegarde_"+new Date().toISOString().slice(0,10)+".json";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(()=>URL.revokeObjectURL(address),1000);
+ }catch(error){message("Export impossible : "+noSecrets(error),true)}
+}
 function message(x,isError){
  const node=$("bartonek-recovery-message");if(!node)return;
  node.textContent=x;
@@ -210,6 +224,14 @@ async function apply(){
   }
   hidePreview();
   message("✅ Numéro complet sauvegardé et vérifié sur Supabase (version "+body.version+"). Copie de sécurité locale créée. Ouvre ensuite le téléphone 1 et laisse-le se synchroniser.");
+  const holder=$("bartonek-recovery-preview");
+  if(holder){
+   holder.innerHTML='<p>🛡️ Sauvegarde locale conservée avant la correction. Tu peux aussi enregistrer une copie privée sur ton téléphone.</p>'+
+    '<button type="button" class="secondary small" id="bartonek-recovery-export-backup">Télécharger la sauvegarde privée (.json)</button>'+
+    '<p class="muted small">Cette sauvegarde contient le numéro de série : ne la partage pas publiquement.</p>';
+   holder.hidden=false;
+   $("bartonek-recovery-export-backup").addEventListener("click",()=>downloadBackup(backupKey));
+  }
  }catch(error){
   const after=serverCommitted?
    "Le cloud a peut-être été corrigé. Ne réessaie pas sans relancer le diagnostic. ":"Aucune correction cloud confirmée. ";
