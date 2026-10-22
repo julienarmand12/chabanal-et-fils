@@ -295,7 +295,7 @@ async function tryNativeScan(video){
  tick();
  return true;
 }
-async function startLibraryScan(){
+async function startLibraryScan(options={}){
  await loadFallbackScanner();
  if(!scannerActive)return;
  const node=el("stock-scan-reader");if(!node)return;
@@ -303,7 +303,8 @@ async function startLibraryScan(){
  const allowed=["EAN_13","EAN_8","UPC_A","UPC_E","CODE_39","CODE_93","CODE_128","ITF","CODABAR","QR_CODE","DATA_MATRIX"].map(k=>window.Html5QrcodeSupportedFormats?.[k]).filter(x=>x!==undefined);
  const instance=new Html5Qrcode("stock-scan-reader",{formatsToSupport:allowed,verbose:false});
  scanner=instance;
- const config={fps:12,qrbox:{width:Math.min(260,Math.max(160,window.innerWidth-80)),height:120}};
+ const scanWidth=Math.min(260,Math.max(160,window.innerWidth-80));
+ const config={fps:12,qrbox:{width:scanWidth,height:options.mode==="serial"?Math.min(scanWidth,230):120}};
  try{await instance.start({facingMode:"environment"},config,code=>deliverCode(code),()=>{});}
  catch(firstError){
   if(!scannerActive)return;
@@ -312,12 +313,12 @@ async function startLibraryScan(){
   await instance.start(cameras[0].id,config,code=>deliverCode(code),()=>{});
  }
 }
-async function openScanner(onRead){
+async function openScanner(onRead,options={}){
  if(el("stock-scan-modal"))return;
  scanCallback=onRead;scanActive(true);
  const node=document.createElement("div");node.id="stock-scan-modal";node.className="modal-backdrop";
- node.innerHTML='<div class="modal" role="dialog" aria-modal="true"><div class="row" style="justify-content:space-between"><h2>📷 Scanner un code-barres</h2><button class="secondary" type="button" id="stock-scan-close">✕</button></div>'+
- '<p class="muted small">Oriente la caméra vers le code-barres. Autorise l’accès à la caméra si demandé.</p>'+
+ node.innerHTML='<div class="modal" role="dialog" aria-modal="true"><div class="row" style="justify-content:space-between"><h2>📷 Scanner un code-barres ou QR code</h2><button class="secondary" type="button" id="stock-scan-close">✕</button></div>'+
+ '<p class="muted small">Oriente la caméra vers le code-barres ou le QR code. Autorise l’accès à la caméra si demandé.</p>'+
  '<video id="stock-scan-video" playsinline muted autoplay hidden></video><div id="stock-scan-reader" hidden></div>'+
  '<p class="muted small" id="stock-scan-message">Ouverture de la caméra…</p>'+
  '<div class="form-actions"><button type="button" class="secondary" id="stock-scan-cancel">Annuler</button></div></div>';
@@ -327,7 +328,7 @@ async function openScanner(onRead){
   let native=false;
   try{native=await tryNativeScan(el("stock-scan-video"))}catch(err){await stopScanner();scanActive(true);native=false}
   if(!scannerActive)return;
-  if(!native)await startLibraryScan();
+  if(!native)await startLibraryScan(options);
   if(el("stock-scan-message"))el("stock-scan-message").textContent="Lecture en cours…";
  }catch(e){
   if(el("stock-scan-message"))el("stock-scan-message").textContent="⚠️ "+(e?.message||e)+". Tu peux saisir le code manuellement.";
@@ -370,6 +371,8 @@ function init(){
 }
 window.stockOpenView=function(){init();render();sync().catch(console.warn)};
 window.stockCloseScanner=closeScanner;
+// Réutilisation par les fiches équipements : la lecture seule ne sauvegarde aucune donnée.
+window.stockOpenScanner=openScanner;
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init,{once:true});
 else init();
 })();
