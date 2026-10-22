@@ -342,7 +342,7 @@ function renderClient(){
 const c=current,r=ratio(c),ints=[...c.interventions].sort((a,b)=>b.iso.localeCompare(a.iso)),first=ints.length?ints[ints.length-1].date:"—",last=ints.length?ints[0].date:"—";
 document.getElementById("clientBody").innerHTML='<div class="panel"><div id="clientOrderAlertSlot" data-client-id="'+esc(c.id)+'">'+(window.clientOrderBadgeHTML?window.clientOrderBadgeHTML(c.id):"")+'</div><div class="row" style="justify-content:space-between"><div><h2>'+esc(c.name)+'</h2><div>'+addressLink(c)+(c.addressComplement?'<div class="muted small">↳ '+esc(c.addressComplement)+'</div>':'')+'</div><div class="contact-list">'+(c.phone?'<a class="contact-link" href="tel:'+encodeURIComponent(c.phone)+'">📞 '+esc(c.phone)+'</a>':'<span class="muted">📞 Téléphone non renseigné</span>')+(c.email?'<a class="contact-link" href="mailto:'+encodeURIComponent(c.email)+'">✉️ '+esc(c.email)+'</a>':'<span class="muted">✉️ Email non renseigné</span>')+'</div><div style="margin-top:12px"><span class="muted small">Mois d’entretien</span><div><b>'+(c.maintenanceMonth?(Number(c.maintenanceMonth)+" - "+clientMonthLabel(c.maintenanceMonth).split(" - ")[1]):"Non renseigné")+'</b></div></div><div style="text-align:right"><div class="stat client-ratio '+(r?(Number(r)<=1.5?"client-ratio-ok":"client-ratio-high"):"")+'">'+(r||"—")+'</div><div class="muted client-ratio-label">interventions/an</div></div></div><div class="grid section client-summary-stats"><div class="card"><div class="muted">Interventions</div><div class="stat">'+c.interventions.length+'</div></div><div class="card"><div class="muted">Première</div><b>'+first+'</b></div><div class="card"><div class="muted">Dernière</div><b>'+last+'</b></div></div></div>'+
 '<div class="panel section"><div class="row" style="justify-content:space-between"><h3>🔧 Équipements du client</h3><div class="row"><button class="secondary" onclick="assignEquipment(\'chaudiere\')">＋ Chaudière</button><button class="secondary" onclick="assignEquipment(\'pac_air_air\')">＋ PAC air/air</button><button class="secondary" onclick="assignEquipment(\'adoucisseur\')">＋ Adoucisseur</button></div></div><div id="clientEquipmentList"></div></div>'+
-'<div class="panel section"><div class="row" style="justify-content:space-between"><h3>🛠 Historique des interventions</h3><button class="primary" onclick="newIntervention()">＋ Nouvelle intervention</button></div><div class="timeline">'+(ints.map(x=>'<div class="event"><strong>'+esc(x.date)+'</strong><div>'+esc(x.description)+'</div><button class="secondary small" style="margin-top:7px" onclick="editIntervention(\''+x.iso+'\')">Modifier</button></div>').join("")||'<p class="muted">Aucune intervention datée.</p>')+'</div></div>'+
+'<div class="panel section"><div class="row" style="justify-content:space-between"><h3>🛠 Historique des interventions</h3><button class="primary" onclick="newIntervention()">＋ Nouvelle intervention</button></div><div class="timeline">'+(ints.map(x=>'<div class="event"><strong>'+esc(x.date)+'</strong><div>'+esc(x.description)+'</div><button class="secondary small" style="margin-top:7px" onclick="editIntervention('+c.interventions.indexOf(x)+')">Modifier</button></div>').join("")||'<p class="muted">Aucune intervention datée.</p>')+'</div></div>'+
 '<div class="panel section"><div class="row" style="justify-content:space-between"><h3>📷 Photos du client</h3><div class="row"><button type="button" class="primary" onclick="openCamera()">📷 Prendre une photo</button><button type="button" class="secondary" onclick="openGallery()">🖼️ Importer</button></div></div><input id="photoCamera" type="file" accept="image/*" capture="environment" style="display:none" onchange="addPhotos(this.files)"><input id="photoImport" type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(this.files)"><div id="photoGallery" class="photo-grid"></div><p class="muted small">Les nouvelles photos sont synchronisées entre les appareils connectés. Les fichiers en attente restent sur cet appareil jusqu’à leur envoi.</p></div>';
 
 renderPhotos();renderClientEquipments();}
@@ -395,7 +395,72 @@ function newIntervention(){
   catch(e){client.interventions.pop();alert("Impossible d’enregistrer l’intervention : "+e.message);return false}
  });
 }
-function editIntervention(iso){const x=current.interventions.find(i=>i.iso===iso);if(!x)return;const d=prompt("Modifier l'intervention du "+x.date,x.description);if(d===null)return;x.description=d;saveAll();renderClient()}
+function editIntervention(identifier){
+ if(!current||document.getElementById("interventionEditModal"))return;
+ // Index dans la liste d'origine : évite de confondre deux interventions du même jour.
+ const index=Number.isInteger(identifier)?identifier:current.interventions.findIndex(x=>x.iso===identifier);
+ const client=current,original=client.interventions[index];
+ if(!original)return;
+ const snapshot=JSON.stringify(original);
+ const modal=document.createElement("div");
+ modal.id="interventionEditModal";modal.className="modal-backdrop";
+ modal.innerHTML='<div class="modal" role="dialog" aria-modal="true" aria-labelledby="interventionEditTitle" style="max-width:520px;max-height:90dvh;overflow-y:auto">'+
+  '<div class="row" style="justify-content:space-between;gap:8px"><h2 id="interventionEditTitle">Modifier une intervention</h2>'+
+  '<button type="button" class="secondary" data-intervention-action="cancel" aria-label="Fermer">✕</button></div>'+
+  '<p class="muted small">Client : '+esc(client.name)+' · Intervention du '+esc(original.date)+'</p>'+
+  '<label for="interventionEditDescription">Description de l’intervention</label>'+
+  '<textarea id="interventionEditDescription" rows="6">'+esc(original.description||"")+'</textarea>'+
+  '<p id="interventionEditWarning" class="muted small" role="alert" aria-live="polite"></p>'+
+  '<div class="form-actions" style="display:flex;gap:9px;flex-wrap:wrap">'+
+  '<button type="button" class="primary" data-intervention-action="save">💾 Enregistrer</button>'+
+  '<button type="button" class="secondary" data-intervention-action="cancel">Annuler</button>'+
+  '<button type="button" class="secondary danger" data-intervention-action="delete">🗑️ Supprimer l’intervention</button></div>'+
+  '</div>';
+ document.body.appendChild(modal);
+ const warning=text=>{const node=document.getElementById("interventionEditWarning");if(node)node.textContent=text};
+ const close=()=>modal.remove();
+ const stillCurrent=()=>{
+  if(!current||current.id!==client.id||!clients.some(c=>c===client)||
+     JSON.stringify(client.interventions[index])!==snapshot){
+   warning("Cette intervention a changé depuis l’ouverture. Ferme la fenêtre puis réessaie.");
+   return false;
+  }
+  return true;
+ };
+ modal.addEventListener("click",event=>{
+  const button=event.target.closest("[data-intervention-action]");
+  if(!button)return;
+  const action=button.dataset.interventionAction;
+  if(action==="cancel"){close();return}
+  if(!stillCurrent())return;
+  if(action==="save"){
+   const description=document.getElementById("interventionEditDescription")?.value||"";
+   if(!description.trim()){warning("La description ne peut pas être vide.");return}
+   if(description===original.description){close();return}
+   const previous=original.description;
+   original.description=description;
+   try{saveAll()}catch(error){
+    original.description=previous;
+    warning("Enregistrement impossible. L’intervention a été conservée.");return;
+   }
+   close();renderClient();
+  }else if(action==="delete"){
+   showDeleteConfirmation(
+    'Supprimer définitivement l’intervention du '+original.date+' pour « '+client.name+' » ? Cette suppression sera synchronisée sur les autres appareils.',
+    ()=>{
+     if(!stillCurrent())return;
+     const [removed]=client.interventions.splice(index,1);
+     try{saveAll()}catch(error){
+      client.interventions.splice(index,0,removed);
+      warning("Suppression non enregistrée. L’intervention a été conservée.");return;
+     }
+     close();renderClient();
+    }
+   );
+  }
+ });
+ modal.querySelector("textarea")?.focus();
+}
 
 const MODEL_KEY="metier_equipement_modeles_v1";
 const ASSIGN_KEY="metier_equipement_attributions_v1";
@@ -780,20 +845,38 @@ function changedPatch(k,oldRaw,newRaw,previous){
 }
 function mergeInterventions(base,local,remote){
  if(!Array.isArray(base)||!Array.isArray(local)||!Array.isArray(remote))return null;
+ // Fusion à trois versions : conserver aussi les suppressions lors d'ajouts concurrents.
+ const key=x=>JSON.stringify(stable(x));
  const count=arr=>{
   const m=new Map();
-  arr.forEach(x=>{const k=JSON.stringify(stable(x));m.set(k,(m.get(k)||0)+1)});
+  arr.forEach(x=>{const k=key(x);m.set(k,(m.get(k)||0)+1)});
   return m;
  };
  const b=count(base),l=count(local),r=count(remote);
- for(const [k,n] of b)if((l.get(k)||0)<n||(r.get(k)||0)<n)return null;
- const merged=remote.slice(),totals=count(merged);
- for(const item of local){
-  const key=JSON.stringify(stable(item));
-  const wanted=Math.max(l.get(key)||0,r.get(key)||0);
-  if((totals.get(key)||0)<wanted){
-   merged.push(item);totals.set(key,(totals.get(key)||0)+1);
+ // Deux modifications concurrentes de la même intervention restent à arbitrer.
+ // Ne pas confondre la modification d'une description avec une nouvelle intervention.
+ const ambiguous=(branch,other)=>{
+  const bc=count(branch),oc=count(other);
+  for(const item of base){
+   const k=key(item),n=b.get(k)||0;
+   if((bc.get(k)||0)>=n||(oc.get(k)||0)>=n)continue;
+   if(branch.some(x=>x&&x.iso===item.iso&&!b.has(key(x))))return true;
   }
+  return false;
+ };
+ if(ambiguous(local,remote)||ambiguous(remote,local))return null;
+ const target=new Map();
+ for(const k of new Set([...b.keys(),...l.keys(),...r.keys()])){
+  const original=b.get(k)||0,ours=l.get(k)||0,theirs=r.get(k)||0;
+  const kept=Math.max(0,original-Math.max(0,original-ours,original-theirs));
+  const added=Math.max(0,ours-original,theirs-original);
+  target.set(k,kept+added);
+ }
+ const merged=[],used=new Map();
+ for(const item of remote.concat(local)){
+  const k=key(item),n=used.get(k)||0;
+  if(n>=(target.get(k)||0))continue;
+  merged.push(item);used.set(k,n+1);
  }
  return merged;
 }
