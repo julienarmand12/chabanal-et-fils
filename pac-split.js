@@ -194,6 +194,23 @@ function dataSummary(serial,year){
  return '<span class="pac-compact-info">N° de série : '+e(serialLabel(serial))+'</span>'+
   '<span class="pac-compact-info">Année : '+e(yearLabel(year))+'</span>';
 }
+/* Lecture partagée avec le Stock. Ne change aucune donnée avant Enregistrer. */
+function scanSerialIntoField(fieldId){
+ const field=get(fieldId),dialog=field?.closest("#pac-meta-editor, #pac-install-modal");
+ if(!field||!dialog)return;
+ if(typeof window.stockOpenScanner!=="function"){
+  alert("Lecteur indisponible. Rouvre l’application ou saisis le numéro manuellement.");return;
+ }
+ window.stockOpenScanner(raw=>{
+  const target=get(fieldId);
+  if(!target||!dialog.isConnected||!target.isConnected||!dialog.contains(target))return;
+  const result=String(raw??"").trim();if(!result)return;
+  const max=Number(target.maxLength||200);
+  if(result.length>max){alert("Le code comporte "+result.length+" caractères (limite : "+max+"). Vérifie qu'il s'agit du numéro de série. Aucune valeur insérée.");return}
+  target.value=result;
+  target.focus();
+ },{mode:"serial"});
+}
 function pickModels(kind,chosen){
  const list=pacModels(kind);
  return '<option value="">Choisir un modèle…</option>'+list.map(m=>
@@ -223,7 +240,7 @@ function wizardMarkup(){
    Object.keys(SIZES).map(v=>'<option value="'+v+'" '+(draft.split===v?"selected":"")+'>'+LABELS[v]+' ('+SIZES[v]+' unité'+(SIZES[v]===1?"":"s")+' intérieure'+(SIZES[v]===1?"":"s")+')</option>').join("")+'</select></div>'+
    '<h3>Groupe extérieur</h3>'+
    '<div><label for="pac-outdoor-model">Modèle du groupe extérieur *</label><select id="pac-outdoor-model" class="model-search">'+pickModels("outdoor",draft.outdoor.modelId)+'</select></div>'+
-   '<div><label for="pac-outdoor-serial">Numéro de série du groupe extérieur</label><input id="pac-outdoor-serial" maxlength="180" value="'+e(draft.outdoor.serial)+'" placeholder="Numéro de série extérieur"></div>'+
+   '<div><label for="pac-outdoor-serial">Numéro de série du groupe extérieur</label><div class="pac-serial-scan-row"><input id="pac-outdoor-serial" maxlength="200" value="'+e(draft.outdoor.serial)+'" placeholder="Numéro de série extérieur"><button type="button" class="secondary pac-scan-trigger" data-pac-scan-target="pac-outdoor-serial">📷 Scanner</button></div></div>'+
    '<div><label for="pac-outdoor-year">Année du groupe extérieur</label><input id="pac-outdoor-year" type="text" inputmode="numeric" maxlength="4" value="'+e(draft.outdoor.year||"")+'" placeholder="Ex. 2020"></div>'+
    '</div><div class="form-actions"><button type="button" class="primary" data-pac-action="next">Suivant : unités intérieures →</button><button type="button" class="secondary" data-pac-action="close">Annuler</button></div>';
  } else {
@@ -232,7 +249,7 @@ function wizardMarkup(){
      const u=draft.indoors[i]||{modelId:"",serial:""};
      return '<fieldset class="pac-indoor-row"><legend>Unité intérieure '+(i+1)+' / '+n+'</legend>'+
      '<label for="pac-indoor-model-'+i+'">Modèle *</label><select id="pac-indoor-model-'+i+'" class="model-search">'+pickModels("indoor",u.modelId)+'</select>'+
-     '<label for="pac-indoor-serial-'+i+'">Numéro de série</label><input id="pac-indoor-serial-'+i+'" maxlength="180" value="'+e(u.serial)+'" placeholder="Numéro de série unité '+(i+1)+'">'+
+     '<label for="pac-indoor-serial-'+i+'">Numéro de série</label><div class="pac-serial-scan-row"><input id="pac-indoor-serial-'+i+'" maxlength="200" value="'+e(u.serial)+'" placeholder="Numéro de série unité '+(i+1)+'"><button type="button" class="secondary pac-scan-trigger" data-pac-scan-target="pac-indoor-serial-'+i+'">📷 Scanner</button></div>'+
      '<label for="pac-indoor-year-'+i+'">Année</label><input id="pac-indoor-year-'+i+'" type="text" inputmode="numeric" maxlength="4" value="'+e(u.year||"")+'" placeholder="Ex. 2020"></fieldset>';
    }).join("")+'</div>'+
    '<div class="form-actions"><button type="button" class="secondary" data-pac-action="back">← Retour</button>'+
@@ -265,6 +282,8 @@ function newWizard(editId){
  document.body.appendChild(backdrop);
  backdrop.addEventListener("click",ev=>{
    if(ev.target===backdrop){closeWizard();return}
+   const scan=ev.target.closest("[data-pac-scan-target]");
+   if(scan){scanSerialIntoField(scan.dataset.pacScanTarget);return}
    const btn=ev.target.closest("[data-pac-action]");if(!btn)return;
    const action=btn.dataset.pacAction;
    if(action==="close"){closeWizard();return}
@@ -388,7 +407,8 @@ function openMetaEditor(modelId,groupId,index){
  '<button type="button" class="secondary" data-meta-close aria-label="Fermer">✕</button></div>'+
  '<p class="pac-meta-device-title">'+e(label)+'</p>'+
  '<label for="pac-meta-serial">Numéro de série</label>'+
- '<input id="pac-meta-serial" type="text" maxlength="200" autocomplete="off" value="'+e(beforeSerial)+'" placeholder="Numéro de série">'+
+ '<div class="pac-serial-scan-row"><input id="pac-meta-serial" type="text" maxlength="200" autocomplete="off" value="'+e(beforeSerial)+'" placeholder="Numéro de série">'+
+ '<button type="button" class="secondary pac-scan-trigger" data-meta-scan="pac-meta-serial">📷 Scanner</button></div>'+
  '<label for="pac-meta-year">Année de l’équipement</label>'+
  '<input id="pac-meta-year" type="text" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" autocomplete="off" value="'+e(beforeYear)+'" placeholder="Ex. 2020">'+
  '<p class="muted small">Aucune modification n’est enregistrée ou synchronisée pendant la saisie. Seul le bouton Enregistrer valide les deux champs.</p>'+
@@ -401,6 +421,8 @@ function openMetaEditor(modelId,groupId,index){
  const close=()=>backdrop.remove();
  backdrop.addEventListener("click",ev=>{
   if(ev.target===backdrop||ev.target.closest("[data-meta-close]")){close();return}
+  const scan=ev.target.closest("[data-meta-scan]");
+  if(scan){scanSerialIntoField(scan.dataset.metaScan);return}
   const btn=ev.target.closest("[data-meta-save]");
   if(!btn)return;
   const serial=get("pac-meta-serial")?.value.trim()||"",year=get("pac-meta-year")?.value.trim()||"";
@@ -511,6 +533,10 @@ css.textContent=
 '.pac-meta-dialog label{display:block;margin:11px 0 6px;font-size:.9rem;font-weight:650}'+
 '.pac-meta-dialog input{display:block;width:100%;max-width:100%;box-sizing:border-box}'+
 '.pac-meta-device-title{color:#a9d9ff;overflow-wrap:anywhere}'+
-'.pac-meta-feedback{font-size:.9rem;color:#ffbd94;margin:9px 0}';
+'.pac-meta-feedback{font-size:.9rem;color:#ffbd94;margin:9px 0}'+
+'.pac-serial-scan-row{display:flex;align-items:stretch;gap:7px;min-width:0;width:100%}'+
+'.pac-serial-scan-row input{flex:1;min-width:0;width:100%;box-sizing:border-box}'+
+'.pac-serial-scan-row .pac-scan-trigger{flex:none;white-space:nowrap;padding:8px 12px;min-height:42px}'+
+'@media(max-width:360px){.pac-serial-scan-row{flex-wrap:wrap}.pac-serial-scan-row .pac-scan-trigger{width:100%}}';
 document.head.appendChild(css);
 })();
