@@ -1,13 +1,16 @@
 /* Compteur personnel de recuperation - Chabanal et fils.
-   Calcul continu au prorata de 1 h 45 par semaine depuis le 01/10/2026.
+   Calcul continu de 5 % des 35 h hebdomadaires, depuis le 05/10/2026.
    Les entrees sont sauvegardees dans la cle prise en charge par le cloud existant. */
 (function(){
 "use strict";
 const KEY="metier_heures_recuperation_v1";
 const PIN="19910426";
-const START=Date.parse("2026-09-30T22:00:00Z"); // 01/10/2026 00:00 Europe/Paris
+const START_DATE="2026-10-05";
+const START=Date.parse("2026-10-04T22:00:00Z"); // 05/10/2026 00:00 Europe/Paris
+const WORK_HOURS_PER_WEEK=35;
+const RECOVERY_PERCENT=5;
 const WEEK_MS=7*24*60*60*1000;
-const WEEK_MIN=105;
+const WEEK_MIN=WORK_HOURS_PER_WEEK*60*RECOVERY_PERCENT/100; // 105 min = 1 h 45
 const DEFAULT_DAY_MIN=420;
 const byId=id=>document.getElementById(id);
 let unlocked=false;
@@ -91,7 +94,7 @@ function render(){
   if(!unlocked||byId("recupHoursOverlay").hidden)return;
   const data=read(),now=Date.now(),today=parisToday();
   const earned=accruedMinutes(now);
-  const entries=data.entries.filter(e=>!e.cancelledAt&&e.date<=today&&e.date>="2026-10-01"&&Number(e.days)>0);
+  const entries=data.entries.filter(e=>!e.cancelledAt&&e.date<=today&&e.date>=START_DATE&&Number(e.days)>0);
   const spentDays=entries.reduce((sum,e)=>sum+Number(e.days),0);
   const spentMins=Math.round(spentDays*data.dayMinutes);
   const balance=earned-spentMins;
@@ -122,7 +125,7 @@ function render(){
       item.className="recup-history-row"+(cancelled?" recup-cancelled":"");
       const info=document.createElement("div");
       const title=document.createElement("strong");
-      title.textContent=frenchDate(entry.date)+" · "+fmtNum(Number(entry.days)||0)+" j"+(cancelled?" · Annulé":"");
+      title.textContent=frenchDate(entry.date)+" · "+fmtNum(Number(entry.days)||0)+" j"+(cancelled?" · Annulé":entry.date<START_DATE?" · Hors période (non déduit)":"");
       const note=document.createElement("div");
       note.className="recup-muted";
       note.textContent=entry.note||"Congé consommé";
@@ -154,8 +157,8 @@ function saveLeave(event){
   const date=byId("recupLeaveDate").value;
   const days=Number(byId("recupLeaveDays").value);
   const note=byId("recupLeaveNote").value.trim().slice(0,180);
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date<"2026-10-01"||date>parisToday()){
-    alert("Choisissez une date comprise entre le 01/10/2026 et aujourd’hui.");return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date<START_DATE||date>parisToday()){
+    alert("Choisissez une date comprise entre le 05/10/2026 et aujourd’hui.");return;
   }
   if(!Number.isFinite(days)||days<=0||days>60||Math.round(days*100)/100!==days){
     alert("Saisissez un nombre de jours positif (maximum 60, précision de 0,01 jour).");return;

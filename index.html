@@ -296,12 +296,12 @@ header{background:linear-gradient(90deg,#140e24,#201432 68%,#160f2c);border-bott
         <div class="recup-muted" id="recupSpentHours">0 h 00 min déduites</div>
       </div>
     </div>
-    <p class="recup-muted">Depuis le 01/10/2026 · +1 h 45 par semaine, calculées au prorata du temps écoulé, mises à jour automatiquement. Aucune date de fin.</p>
+    <p class="recup-muted">Depuis le 05/10/2026 · 35 h de travail par semaine × 5 % = 1 h 45 de récupération hebdomadaire. Cumul automatique au prorata du temps écoulé, sans date de fin.</p>
     <div class="recup-panel">
       <h3>➖ Déduire un congé consommé</h3>
       <form id="recupLeaveForm">
         <div class="recup-leave-grid">
-          <div><label for="recupLeaveDate">Date du congé</label><input id="recupLeaveDate" type="date" min="2026-10-01" required></div>
+          <div><label for="recupLeaveDate">Date du congé</label><input id="recupLeaveDate" type="date" min="2026-10-05" required></div>
           <div><label for="recupLeaveDays">Nombre de jours consommés</label><input id="recupLeaveDays" type="number" min="0.01" max="60" step="0.01" placeholder="Ex. 0,5 ou 1" required></div>
         </div>
         <label for="recupLeaveNote">Motif / note (facultatif)</label>
@@ -1491,5 +1491,5 @@ window.metierMediaState=function(){return {current:typeof current==="undefined"?
 </script>
 <script src="./media-sync.js"></script>
 <script src="./stock.js"></script>
-<script src="./heures-recup.js?v=20261023-2"></script>
+<script src="./heures-recup.js?v=20261023-3"></script>
 <script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));}</script></body></html>
