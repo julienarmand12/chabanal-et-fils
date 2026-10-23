@@ -46,3 +46,23 @@
 #stock-modal .stock-barcode-entry input{flex:1 1 auto;min-width:0}
 #stock-modal .stock-barcode-entry button{flex:0 0 auto;white-space:nowrap}
 #stock .stock-quantity-control button:disabled,#stock-modal .stock-quantity-control button:disabled{opacity:.45;cursor:not-allowed}
+
+/* Commandes caméra du scanner de numéros de série (chaudières, PAC, adoucisseurs). */
+#stock-scan-modal .stock-scan-view{position:relative;width:100%;touch-action:manipulation;min-width:0}
+#stock-scan-modal .stock-scan-focus-marker{position:absolute;width:54px;height:54px;border:2px solid #80d6ff;border-radius:50%;pointer-events:none;transform:translate(-50%,-50%);box-shadow:0 0 0 3px rgba(0,17,34,.4),0 0 15px rgba(28,155,255,.6);z-index:3}
+#stock-scan-modal .stock-scan-focus-marker[hidden],#stock-scan-modal .stock-scan-controls[hidden],#stock-scan-modal .stock-scan-zoom-row[hidden]{display:none!important}
+#stock-scan-modal .stock-scan-controls{margin-top:10px;padding:11px;border:1px solid #286097;border-radius:10px;background:#092440}
+#stock-scan-modal .stock-scan-camera-buttons{display:flex;flex-wrap:wrap;gap:8px}
+#stock-scan-modal .stock-scan-camera-buttons button{flex:1 1 170px;min-height:43px}
+#stock-scan-modal .stock-scan-camera-buttons button[disabled]{opacity:.52;cursor:not-allowed}
+#stock-scan-modal .stock-scan-zoom-row{margin-top:12px}
+#stock-scan-modal .stock-scan-zoom-row label{display:block;margin:0 0 6px}
+#stock-scan-modal .stock-scan-zoom-input{display:flex;align-items:center;gap:8px}
+#stock-scan-modal .stock-scan-zoom-input button{flex:0 0 37px;min-height:38px;padding:6px}
+#stock-scan-modal .stock-scan-zoom-input input[type=range]{flex:1;min-width:0;min-height:40px;padding:0;accent-color:#49b4ff}
+#stock-scan-modal #stock-scan-zoom-value{flex:0 0 45px;font-size:.85rem;font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
+#stock-scan-modal #stock-scan-control-message{margin:9px 0 0}
+@media(max-width:420px){
+ #stock-scan-modal .modal{padding:12px}
+ #stock-scan-modal .stock-scan-camera-buttons button{flex-basis:100%}
+}
