@@ -11,6 +11,7 @@ function read(key){try{const o=JSON.parse(localStorage.getItem(key)||"{}");retur
 function persist(key,obj){try{localStorage.setItem(key,JSON.stringify(obj));return true}catch(e){alert("Stockage local plein : changement non conservé.");return false}}
 let cache=read(CACHE),pending=read(PENDING),selected="",busy=false,lastError="",lastSynced=false,sbChannel=null,initialized=false,resyncRequested=false;
 let scanner=null,scannerStream=null,scannerActive=false,scannerTimer=null,scanCallback=null,scanToken=0,scanScript=null;
+let scanCurrentOptions={},scannerTorchOn=false,scannerZoomMin=1,scannerZoomMax=1,scannerZoomStep=.1,scannerZoomValue=1,scannerZoomTimer=null,scannerZoomTask=Promise.resolve();
 const keyFor=o=>PREFIX+o.kind+"_"+o.id;
 const all=()=>{
  const m={};
@@ -259,8 +260,160 @@ function loadFallbackScanner(){
  }).catch(e=>{scanScript=null;throw e});
  return scanScript;
 }
+
+/* Réglages de la caméra lors du scan d'un numéro de série.
+ * Selon le navigateur, getCapabilities() peut ne pas exposer zoom, torch ou focus.
+ * Dans ce cas les commandes restent désactivées, sans émulation trompeuse.
+ */
+function scanHardware(){
+ if(scannerStream){
+  const track=scannerStream.getVideoTracks?.()[0];
+  if(track&&track.readyState!=="ended")return {track,kind:"native"};
+ }
+ if(scanner&&typeof scanner.applyVideoConstraints==="function"&&
+    typeof scanner.getRunningTrackCapabilities==="function")return {kind:"library"};
+ return null;
+}
+function scanCapabilities(){
+ const hardware=scanHardware();
+ if(!hardware)return {};
+ try{return hardware.kind==="native"?hardware.track.getCapabilities?.()||{}:
+  scanner.getRunningTrackCapabilities()||{}}
+ catch(_){return {}}
+}
+function scanSettings(){
+ const hardware=scanHardware();
+ if(!hardware)return {};
+ try{return hardware.kind==="native"?hardware.track.getSettings?.()||{}:
+  scanner.getRunningTrackSettings?.()||{}}
+ catch(_){return {}}
+}
+async function scanApplySetting(next){
+ if(!scannerActive||!el("stock-scan-modal"))throw new Error("Caméra fermée.");
+ const hardware=scanHardware();
+ if(!hardware)throw new Error("La caméra n’est pas prête.");
+ const constraints={advanced:[next]};
+ if(hardware.kind==="native")await hardware.track.applyConstraints(constraints);
+ else await scanner.applyVideoConstraints(constraints);
+ if(!scannerActive||!el("stock-scan-modal"))throw new Error("La caméra a été fermée.");
+}
+const scanMinMax=(n,min,max)=>Math.max(min,Math.min(max,n));
+function scanControlMessage(msg){
+ const node=el("stock-scan-control-message");if(node)node.textContent=msg;
+}
+function supportedFocus(caps){
+ const modes=Array.isArray(caps.focusMode)?caps.focusMode:[];
+ return ["single-shot","continuous"].some(m=>modes.includes(m));
+}
+async function scanRefocus(position){
+ const caps=scanCapabilities(),modes=Array.isArray(caps.focusMode)?caps.focusMode:[];
+ const button=el("stock-scan-focus");
+ if(!supportedFocus(caps)){scanControlMessage("La mise au point manuelle n’est pas disponible sur cet appareil. L’autofocus reste géré par le téléphone.");return}
+ if(button)button.disabled=true;
+ try{
+  const next={focusMode:modes.includes("single-shot")?"single-shot":"continuous"};
+  if(position&&("pointsOfInterest" in caps))
+   next.pointsOfInterest=[{x:scanMinMax(position.x,0,1),y:scanMinMax(position.y,0,1)}];
+  await scanApplySetting(next);
+  scanControlMessage(next.pointsOfInterest?"Mise au point demandée à l’endroit touché.":"Mise au point automatique demandée.");
+ }catch(error){
+  scanControlMessage("Mise au point refusée par le navigateur. Le téléphone conserve son autofocus.");
+ }finally{if(button&&el("stock-scan-modal"))button.disabled=false}
+}
+function scanFocusFromClick(event){
+ const controls=el("stock-scan-controls");
+ if(!controls||controls.hidden)return;
+ const surface=el("stock-scan-view");
+ const bounds=surface?.getBoundingClientRect?.();
+ if(!bounds||!bounds.width||!bounds.height)return;
+ const point={x:(event.clientX-bounds.left)/bounds.width,y:(event.clientY-bounds.top)/bounds.height};
+ scanRefocus(point).catch(console.warn);
+ const marker=el("stock-scan-focus-marker");
+ if(marker){
+  marker.style.left=(scanMinMax(point.x,0,1)*100)+"%";
+  marker.style.top=(scanMinMax(point.y,0,1)*100)+"%";
+  marker.hidden=false;
+  clearTimeout(marker._hideTimeout);
+  marker._hideTimeout=setTimeout(()=>{if(marker.isConnected)marker.hidden=true},800);
+ }
+}
+async function scanToggleTorch(){
+ const control=el("stock-scan-torch");
+ if(!control||control.disabled)return;
+ control.disabled=true;
+ const want=!scannerTorchOn;
+ try{
+  await scanApplySetting({torch:want});
+  scannerTorchOn=want;
+  control.textContent=want?"🔦 Flash : allumé":"🔦 Flash : éteint";
+  control.setAttribute("aria-pressed",String(want));
+  scanControlMessage(want?"Éclairage activé.":"Éclairage désactivé.");
+ }catch(error){
+  scanControlMessage("Impossible de modifier le flash. Vérifie que la caméra arrière est utilisée.");
+ }finally{if(control&&el("stock-scan-modal"))control.disabled=false}
+}
+function scanApplyZoom(value){
+ const input=el("stock-scan-zoom"),display=el("stock-scan-zoom-value");
+ const n=Number(value);
+ if(!Number.isFinite(n))return;
+ const zoom=scanMinMax(n,scannerZoomMin,scannerZoomMax);
+ scannerZoomValue=zoom;
+ if(input)input.value=String(zoom);
+ if(display)display.textContent=zoom.toFixed(1)+"×";
+ clearTimeout(scannerZoomTimer);
+ // Les déplacements rapides du curseur ne doivent pas lancer plusieurs contraintes concurrentes.
+ scannerZoomTimer=setTimeout(()=>{
+  scannerZoomTask=scannerZoomTask.catch(()=>{}).then(async()=>{
+   if(!scannerActive||!el("stock-scan-modal"))return;
+   try{await scanApplySetting({zoom:scannerZoomValue})}
+   catch(error){scanControlMessage("Ce niveau de zoom n’a pas été accepté par la caméra.");}
+  });
+ },110);
+}
+function scanPrepareControls(options={}){
+ if(options.mode!=="serial"||!scannerActive||!el("stock-scan-modal"))return;
+ const controls=el("stock-scan-controls"),zoomRow=el("stock-scan-zoom-row");
+ if(!controls)return;
+ controls.hidden=false;
+ const caps=scanCapabilities(),settings=scanSettings();
+ const focus=el("stock-scan-focus"),torch=el("stock-scan-torch");
+ if(focus)focus.disabled=!supportedFocus(caps);
+ const torchSupported=caps.torch===true||(Array.isArray(caps.torch)&&caps.torch.includes(true));
+ if(torch)torch.disabled=!torchSupported;
+ scannerTorchOn=false;
+ if(torch){torch.textContent="🔦 Flash : éteint";torch.setAttribute("aria-pressed","false")}
+ const zoom=caps.zoom;
+ const zoomAvailable=zoom&&Number.isFinite(zoom.min)&&Number.isFinite(zoom.max)&&zoom.max>zoom.min;
+ if(zoomRow)zoomRow.hidden=!zoomAvailable;
+ if(zoomAvailable){
+  scannerZoomMin=Number(zoom.min);scannerZoomMax=Number(zoom.max);
+  scannerZoomStep=Number(zoom.step)>0?Number(zoom.step):.1;
+  const chosen=Number.isFinite(settings.zoom)?settings.zoom:Math.max(1,scannerZoomMin);
+  scannerZoomValue=scanMinMax(chosen,scannerZoomMin,scannerZoomMax);
+  const slider=el("stock-scan-zoom");
+  if(slider){slider.min=String(scannerZoomMin);slider.max=String(scannerZoomMax);slider.step=String(scannerZoomStep);slider.value=String(scannerZoomValue);}
+  if(el("stock-scan-zoom-value"))el("stock-scan-zoom-value").textContent=scannerZoomValue.toFixed(1)+"×";
+ }
+ const available=[];
+ if(zoomAvailable)available.push("zoom");
+ if(torchSupported)available.push("flash");
+ if(supportedFocus(caps))available.push("mise au point");
+ scanControlMessage(available.length?"Réglages disponibles : "+available.join(", ")+".":"La caméra utilise ses réglages automatiques. Zoom, flash et mise au point manuelle non exposés par ce navigateur.");
+}
+function scanWireControls(options={}){
+ if(options.mode!=="serial")return;
+ el("stock-scan-focus")?.addEventListener("click",()=>scanRefocus(null).catch(console.warn));
+ el("stock-scan-torch")?.addEventListener("click",()=>scanToggleTorch().catch(console.warn));
+ el("stock-scan-zoom")?.addEventListener("input",event=>scanApplyZoom(event.target.value));
+ el("stock-scan-zoom-minus")?.addEventListener("click",()=>scanApplyZoom(scannerZoomValue-Math.max(.5,scannerZoomStep)));
+ el("stock-scan-zoom-plus")?.addEventListener("click",()=>scanApplyZoom(scannerZoomValue+Math.max(.5,scannerZoomStep)));
+ el("stock-scan-view")?.addEventListener("click",scanFocusFromClick);
+}
+
 async function stopScanner(){
  scanActive(false);
+ clearTimeout(scannerZoomTimer);scannerZoomTimer=null;
+ scannerTorchOn=false;
  const sc=scanner;scanner=null;
  if(sc){try{await sc.stop()}catch(e){}try{await sc.clear()}catch(e){}}
  if(scannerStream){scannerStream.getTracks().forEach(t=>t.stop());scannerStream=null}
@@ -283,6 +436,7 @@ async function tryNativeScan(video){
  const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"}}});
  if(!scannerActive){stream.getTracks().forEach(t=>t.stop());return true}
  scannerStream=stream;video.srcObject=stream;video.hidden=false;await video.play();
+ scanPrepareControls(scanCurrentOptions);
  const token=scanToken;
  const tick=async()=>{
   if(!scannerActive||scanToken!==token)return;
@@ -312,18 +466,31 @@ async function startLibraryScan(options={}){
   if(!cameras?.length)throw firstError;
   await instance.start(cameras[0].id,config,code=>deliverCode(code),()=>{});
  }
+ scanPrepareControls(options);
 }
 async function openScanner(onRead,options={}){
  if(el("stock-scan-modal"))return;
- scanCallback=onRead;scanActive(true);
+ scanCallback=onRead;scanCurrentOptions=options;scanActive(true);
  const node=document.createElement("div");node.id="stock-scan-modal";node.className="modal-backdrop";
  node.innerHTML='<div class="modal" role="dialog" aria-modal="true"><div class="row" style="justify-content:space-between"><h2>📷 Scanner un code-barres ou QR code</h2><button class="secondary" type="button" id="stock-scan-close">✕</button></div>'+
  '<p class="muted small">Oriente la caméra vers le code-barres ou le QR code. Autorise l’accès à la caméra si demandé.</p>'+
+ '<div id="stock-scan-view" class="stock-scan-view" aria-label="Aperçu caméra, appuyer pour effectuer la mise au point">'+
  '<video id="stock-scan-video" playsinline muted autoplay hidden></video><div id="stock-scan-reader" hidden></div>'+
+ '<span id="stock-scan-focus-marker" class="stock-scan-focus-marker" hidden aria-hidden="true"></span></div>'+
+ '<div id="stock-scan-controls" class="stock-scan-controls" hidden>'+
+ '<div class="stock-scan-camera-buttons"><button type="button" class="secondary" id="stock-scan-focus" disabled>🎯 Mise au point</button>'+
+ '<button type="button" class="secondary" id="stock-scan-torch" aria-pressed="false" disabled>🔦 Flash : éteint</button></div>'+
+ '<div id="stock-scan-zoom-row" class="stock-scan-zoom-row" hidden><label for="stock-scan-zoom">Zoom caméra</label>'+
+ '<div class="stock-scan-zoom-input"><button type="button" class="secondary" id="stock-scan-zoom-minus" aria-label="Réduire le zoom">−</button>'+
+ '<input id="stock-scan-zoom" type="range" min="1" max="4" step=".1" value="1" aria-label="Niveau de zoom">'+
+ '<button type="button" class="secondary" id="stock-scan-zoom-plus" aria-label="Augmenter le zoom">＋</button>'+
+ '<span id="stock-scan-zoom-value" aria-live="polite">1,0×</span></div></div>'+
+ '<p id="stock-scan-control-message" class="muted small" aria-live="polite">Lecture des capacités de la caméra…</p></div>'+
  '<p class="muted small" id="stock-scan-message">Ouverture de la caméra…</p>'+
  '<div class="form-actions"><button type="button" class="secondary" id="stock-scan-cancel">Annuler</button></div></div>';
  document.body.appendChild(node);
  el("stock-scan-close").onclick=closeScanner;el("stock-scan-cancel").onclick=closeScanner;
+ scanWireControls(options);
  try{
   let native=false;
   try{native=await tryNativeScan(el("stock-scan-video"))}catch(err){await stopScanner();scanActive(true);native=false}
