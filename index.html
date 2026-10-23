@@ -264,10 +264,10 @@ header{background:linear-gradient(90deg,#140e24,#201432 68%,#160f2c);border-bott
 <div id="recupPinOverlay" class="recup-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="recupPinTitle">
   <section class="recup-card recup-pin-card">
     <div class="recup-top"><h2 id="recupPinTitle">🔒 Accès au compteur d'heure</h2><button class="recup-exit" type="button" onclick="closeRecoveryHoursLock()" aria-label="Fermer">✕</button></div>
-    <p class="recup-muted">Saisissez le code à 4 chiffres pour ouvrir votre compteur personnel.</p>
+    <p class="recup-muted">Saisissez le code à 8 chiffres pour ouvrir votre compteur personnel.</p>
     <form id="recupPinForm" autocomplete="off">
       <label for="recupPinInput">Code d'accès</label>
-      <input id="recupPinInput" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required placeholder="••••">
+      <input id="recupPinInput" type="password" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" autocomplete="off" required placeholder="••••••••">
       <div id="recupPinError" class="recup-error" aria-live="polite"></div>
       <button class="recup-action" type="submit">Déverrouiller</button>
     </form>
@@ -1491,5 +1491,5 @@ window.metierMediaState=function(){return {current:typeof current==="undefined"?
 </script>
 <script src="./media-sync.js"></script>
 <script src="./stock.js"></script>
-<script src="./heures-recup.js?v=20261023-1"></script>
+<script src="./heures-recup.js?v=20261023-2"></script>
 <script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));}</script></body></html>

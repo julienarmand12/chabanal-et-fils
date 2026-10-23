@@ -4,7 +4,7 @@
 (function(){
 "use strict";
 const KEY="metier_heures_recuperation_v1";
-const PIN="0910";
+const PIN="19910426";
 const START=Date.parse("2026-09-30T22:00:00Z"); // 01/10/2026 00:00 Europe/Paris
 const WEEK_MS=7*24*60*60*1000;
 const WEEK_MIN=105;
@@ -184,7 +184,7 @@ function saveDayHours(){
 byId("recupPinForm")?.addEventListener("submit",unlock);
 byId("recupLeaveForm")?.addEventListener("submit",saveLeave);
 byId("recupSaveDayHours")?.addEventListener("click",saveDayHours);
-byId("recupPinInput")?.addEventListener("input",e=>{e.target.value=e.target.value.replace(/\D/g,"").slice(0,4);byId("recupPinError").textContent=""});
+byId("recupPinInput")?.addEventListener("input",e=>{e.target.value=e.target.value.replace(/\D/g,"").slice(0,8);byId("recupPinError").textContent=""});
 for(const id of ["recupPinOverlay","recupHoursOverlay"]){
   byId(id)?.addEventListener("click",e=>{
     if(e.target!==e.currentTarget)return;
