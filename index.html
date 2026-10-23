@@ -171,6 +171,7 @@ header{background:linear-gradient(90deg,#140e24,#201432 68%,#160f2c);border-bott
   else disableOldRecoveryUi();
 })();
 </script>
+<link rel="stylesheet" href="./heures-recup.css?v=20261023-1">
 </head>
 <body><div id="authOverlay" class="auth-overlay">
 <div class="auth-box">
@@ -255,6 +256,74 @@ header{background:linear-gradient(90deg,#140e24,#201432 68%,#160f2c);border-bott
   <div id="cloudSyncDetails" class="muted small" style="margin-top:8px">
     Configurez Supabase une seule fois sur cet appareil, puis utilisez le même projet sur les autres appareils.
   </div>
+  <button id="recupLockButton" type="button" onclick="openRecoveryHoursLock()" title="Compteur d'heure" aria-label="Ouvrir le compteur d'heure protégé">🔒</button>
+</div>
+
+
+<!-- Compteur de recuperation : non affiche tant que le cadenas n'est pas deverrouille. -->
+<div id="recupPinOverlay" class="recup-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="recupPinTitle">
+  <section class="recup-card recup-pin-card">
+    <div class="recup-top"><h2 id="recupPinTitle">🔒 Accès au compteur d'heure</h2><button class="recup-exit" type="button" onclick="closeRecoveryHoursLock()" aria-label="Fermer">✕</button></div>
+    <p class="recup-muted">Saisissez le code à 4 chiffres pour ouvrir votre compteur personnel.</p>
+    <form id="recupPinForm" autocomplete="off">
+      <label for="recupPinInput">Code d'accès</label>
+      <input id="recupPinInput" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required placeholder="••••">
+      <div id="recupPinError" class="recup-error" aria-live="polite"></div>
+      <button class="recup-action" type="submit">Déverrouiller</button>
+    </form>
+  </section>
+</div>
+<div id="recupHoursOverlay" class="recup-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="recupHoursTitle">
+  <section class="recup-card">
+    <div class="recup-top">
+      <h2 id="recupHoursTitle">⏱ Compteur d'heure</h2>
+      <button id="recupHoursClose" class="recup-exit" type="button" onclick="closeRecoveryHours()" aria-label="Fermer le compteur">✕ Fermer</button>
+    </div>
+    <div class="recup-balance" id="recupBalanceHeader" data-tone="positive">
+      <div class="recup-balance-kicker">SOLDE DISPONIBLE</div>
+      <div class="recup-balance-days" id="recupBalanceDays">0,00 jour</div>
+      <div class="recup-balance-sub" id="recupBalanceHours">0 h 00 min disponibles</div>
+    </div>
+    <div class="recup-tiles">
+      <div class="recup-tile">
+        <div class="recup-tile-label">HEURES DE RÉCUPÉRATION ACQUISES</div>
+        <div class="recup-tile-value" id="recupEarnedHours">0 h 00 min</div>
+        <div class="recup-muted" id="recupEarnedDays">0,00 jour</div>
+      </div>
+      <div class="recup-tile">
+        <div class="recup-tile-label">CONGÉS CONSOMMÉS</div>
+        <div class="recup-tile-value" id="recupSpentDays">0,00 jour</div>
+        <div class="recup-muted" id="recupSpentHours">0 h 00 min déduites</div>
+      </div>
+    </div>
+    <p class="recup-muted">Depuis le 01/10/2026 · +1 h 45 par semaine, calculées au prorata du temps écoulé, mises à jour automatiquement. Aucune date de fin.</p>
+    <div class="recup-panel">
+      <h3>➖ Déduire un congé consommé</h3>
+      <form id="recupLeaveForm">
+        <div class="recup-leave-grid">
+          <div><label for="recupLeaveDate">Date du congé</label><input id="recupLeaveDate" type="date" min="2026-10-01" required></div>
+          <div><label for="recupLeaveDays">Nombre de jours consommés</label><input id="recupLeaveDays" type="number" min="0.01" max="60" step="0.01" placeholder="Ex. 0,5 ou 1" required></div>
+        </div>
+        <label for="recupLeaveNote">Motif / note (facultatif)</label>
+        <input id="recupLeaveNote" type="text" maxlength="180" placeholder="Ex. Récupération du vendredi">
+        <button class="recup-action" type="submit">Enregistrer le congé</button>
+      </form>
+    </div>
+    <div class="recup-panel">
+      <h3>📋 Historique des congés</h3>
+      <div id="recupHistory" aria-live="polite"></div>
+    </div>
+    <div class="recup-panel">
+      <h3>⚙️ Équivalence en jours</h3>
+      <div class="recup-day-settings">
+        <label for="recupDailyHours">Durée d'un jour de travail (en heures)
+          <input id="recupDailyHours" type="number" min="1" max="12" step="0.25" value="7">
+        </label>
+        <button id="recupSaveDayHours" class="recup-action" type="button">Enregistrer</button>
+      </div>
+      <p class="recup-muted">Par défaut : 1 jour = 7 heures. Modifier cette valeur recalculera l'équivalent en jours et la valeur horaire des congés.</p>
+    </div>
+  </section>
 </div>
 
 <footer class="wrap" style="padding-top:8px;padding-bottom:24px"><div class="muted small">Chabanal et fils · Application métier v1.1 — base de données en ligne · 738 clients</div></footer>
@@ -780,7 +849,7 @@ header{background:linear-gradient(90deg,rgba(2,19,40,.98),rgba(6,42,84,.96) 70%,
 const CLOUD_CFG_KEY="chabanal_v2_cloud_config";
 const CLOUD_META_KEY="chabanal_v2_cloud_meta";
 const CLOUD_QUEUE_KEY="chabanal_v2_sync_queue";
-const CLOUD_KEYS=["metier_clients_v1_2_corrigee","metier_clients_data_version","metier_clients_deleted_v1","metier_equipement_modeles_v1","metier_equipement_attributions_v1","metier_notifications_pieces_v1","metier_equipement_numeros_serie_v1","metier_diagnostics_marques_v1"];
+const CLOUD_KEYS=["metier_clients_v1_2_corrigee","metier_clients_data_version","metier_clients_deleted_v1","metier_equipement_modeles_v1","metier_equipement_attributions_v1","metier_notifications_pieces_v1","metier_equipement_numeros_serie_v1","metier_diagnostics_marques_v1","metier_heures_recuperation_v1"];
 const LOCAL_ONLY_PREFIXES=["chabanal_auth_session_v1","chabanal_v2_"];
 let sb=null,cloudReady=false,syncing=false,realtimeChannel=null;
 function cfg(){try{return JSON.parse(localStorage.getItem(CLOUD_CFG_KEY)||"null")}catch(e){return null}}
@@ -863,6 +932,30 @@ function changedPatch(k,oldRaw,newRaw,previous){
    else patch.changes[id]={before:was,after:updated};
   }
   return Object.keys(patch.changes).length<=60?patch:null;
+ }
+ if(k===HOURS_KEY){
+  const valid=x=>x&&typeof x==="object"&&!Array.isArray(x)&&Array.isArray(x.entries);
+  if(before!==null&&!valid(before))return null;
+  if(!valid(after))return null;
+  const old=before||{dayMinutes:420,entries:[]};
+  const map=x=>{const m=new Map();for(const e of x.entries){if(!e||typeof e.id!=="string"||m.has(e.id))return null;m.set(e.id,e)}return m};
+  const a=map(old),b=map(after);
+  if(!a||!b)return null;
+  const patch=previous?JSON.parse(JSON.stringify(previous.patch)):{kind:"recoveryHours",changes:{},dayMinutes:null};
+  if(patch.kind!=="recoveryHours")return null;
+  for(const id of new Set([...a.keys(),...b.keys()])){
+    const was=a.has(id)?a.get(id):null,now=b.has(id)?b.get(id):null;
+    if(sameJSON(was,now))continue;
+    const first=patch.changes[id]?patch.changes[id].before:was;
+    if(sameJSON(first,now))delete patch.changes[id];
+    else patch.changes[id]={before:first,after:now};
+  }
+  const oldDay=Number(old.dayMinutes||420),newDay=Number(after.dayMinutes||420);
+  if(oldDay!==newDay){
+    const first=patch.dayMinutes?patch.dayMinutes.before:oldDay;
+    patch.dayMinutes=first===newDay?null:{before:first,after:newDay};
+  }
+  return Object.keys(patch.changes).length<=120?patch:null;
  }
  return null;
 }
@@ -989,6 +1082,23 @@ function mergePending(k,patch,remote){
   }
   return out;
  }
+ if(k===HOURS_KEY&&patch.kind==="recoveryHours"){
+  const base=remote&&typeof remote==="object"&&!Array.isArray(remote)?remote:{dayMinutes:420,entries:[]};
+  if(!Array.isArray(base.entries))return null;
+  const map=new Map();
+  for(const entry of base.entries){if(!entry||typeof entry.id!=="string"||map.has(entry.id))return null;map.set(entry.id,entry)}
+  for(const [id,change] of Object.entries(patch.changes||{})){
+    const theirs=map.has(id)?map.get(id):null;
+    if(!sameJSON(theirs,change.before)&&!sameJSON(theirs,change.after))return null;
+    if(change.after===null)map.delete(id);else map.set(id,change.after);
+  }
+  let dayMinutes=Number(base.dayMinutes||420);
+  if(patch.dayMinutes){
+    if(dayMinutes!==patch.dayMinutes.before&&dayMinutes!==patch.dayMinutes.after)return null;
+    dayMinutes=patch.dayMinutes.after;
+  }
+  return {...base,dayMinutes,entries:[...map.values()]};
+ }
  return null;
 }
 
@@ -1020,11 +1130,12 @@ async function pullKey(key){const {data,error}=await sb.from("app_sync_state").s
 // V2.4 : les changements locaux restent dans une file tant que le cloud ne les a pas acceptés.
 // Une nouvelle version distante ne doit jamais être écrasée par un appareil en retard.
 const DELETED_KEY="metier_clients_deleted_v1",CLIENTS_KEY="metier_clients_v1_2_corrigee";
+const HOURS_KEY="metier_heures_recuperation_v1";
 const BACKUP_PREFIX="chabanal_v2_local_backup_20261011_";
 const SERIAL_KEY="metier_equipement_numeros_serie_v1";
 const NOTIF_KEY="metier_notifications_pieces_v1";
 let syncPromise=null,needsRefresh=false,realtimeRetry=null,pendingClientCloudPull=false;
-function rawSet(k,v){nativeSet.call(localStorage,k,JSON.stringify(v))}
+function rawSet(k,v){nativeSet.call(localStorage,k,JSON.stringify(v));if(k===HOURS_KEY&&typeof window.recoveryHoursRemoteUpdate==="function")window.recoveryHoursRemoteUpdate()}
 function rawDelete(k){nativeRemove.call(localStorage,k)}
 function parseValue(k){const v=localStorage.getItem(k);if(v===null)return null;try{return JSON.parse(v)}catch(e){return v}}
 function uniqueIds(x){return Array.from(new Set(Array.isArray(x)?x:[]))}
@@ -1380,4 +1491,5 @@ window.metierMediaState=function(){return {current:typeof current==="undefined"?
 </script>
 <script src="./media-sync.js"></script>
 <script src="./stock.js"></script>
+<script src="./heures-recup.js?v=20261023-1"></script>
 <script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));}</script></body></html>

@@ -1,0 +1,44 @@
+/* Compteur prive des heures de recuperation */
+#recupLockButton{display:inline-flex;align-items:center;justify-content:center;min-height:38px;min-width:38px;border-radius:11px;border:1px solid #28577c;background:#0b3158;color:#def3ff;margin-top:10px;padding:6px 9px;cursor:pointer;font-size:19px;line-height:1}
+#recupLockButton:hover,#recupLockButton:focus-visible{border-color:#68baff;background:#144d7a;outline-offset:2px}
+html.recup-modal-open{overflow:hidden}
+.recup-overlay[hidden]{display:none!important}
+.recup-overlay{position:fixed;inset:0;z-index:100010;background:rgba(0,9,21,.90);display:flex;justify-content:center;align-items:center;padding:14px;overflow-y:auto;overscroll-behavior:contain}
+.recup-card{width:min(760px,100%);max-height:min(94dvh,950px);overflow-y:auto;overscroll-behavior:contain;background:#061c35;border:1px solid #2b5b7e;box-shadow:0 22px 65px #000a;color:#e9f5ff;border-radius:20px;padding:20px}
+.recup-pin-card{max-width:370px}
+.recup-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px}
+.recup-top h2{margin:0;font-size:22px}
+.recup-top .recup-exit{border:1px solid #37627d;background:#102f4a;border-radius:9px;padding:7px 12px;color:#ebf6ff;cursor:pointer;font-size:14px}
+.recup-muted{color:#9fbad0;font-size:13px;line-height:1.45;margin:6px 0}
+.recup-error{color:#ffb1aa;font-size:13px;min-height:19px;margin:7px 0}
+.recup-card label{display:block;font-weight:700;color:#def2ff;font-size:13px;margin:6px 0}
+.recup-card input{width:100%;color:#eff8ff!important;background:#0b2947!important;border:1px solid #34668b!important;border-radius:10px;padding:11px;font-size:16px}
+.recup-card input:focus-visible{outline:2px solid #75bfff;outline-offset:1px}
+.recup-card .recup-action{background:#166aaa;color:#fff;border:1px solid #248bd4;border-radius:10px;cursor:pointer;font-weight:700;padding:11px 15px;white-space:nowrap}
+.recup-card .recup-action:hover{background:#2384c9}
+.recup-balance{border:1px solid #299b65;background:linear-gradient(115deg,#0b452d,#0b3025);border-radius:16px;padding:20px 17px;text-align:center;margin-bottom:15px}
+.recup-balance[data-tone="negative"]{border-color:#e78b2e;background:linear-gradient(115deg,#69380d,#3c260d)}
+.recup-balance-kicker{color:#cdece0;font-size:13px;font-weight:750;letter-spacing:.03em}
+.recup-balance[data-tone="negative"] .recup-balance-kicker{color:#ffdeb1}
+.recup-balance-days{font-size:clamp(29px,8vw,49px);line-height:1.1;font-weight:850;color:#80e7ab;margin:9px 0 3px;font-variant-numeric:tabular-nums}
+.recup-balance[data-tone="negative"] .recup-balance-days{color:#ffb55f}
+.recup-balance-sub{color:#e0f4e8;font-size:15px;font-variant-numeric:tabular-nums}
+.recup-balance[data-tone="negative"] .recup-balance-sub{color:#ffe2bc}
+.recup-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.recup-tile{padding:15px;border-radius:13px;background:#0b2948;border:1px solid #204a6e}
+.recup-tile-label{color:#a9c3d7;font-size:12px;margin-bottom:7px;font-weight:700}
+.recup-tile-value{font-size:19px;font-weight:800;line-height:1.4;color:#f1f8ff;font-variant-numeric:tabular-nums}
+.recup-panel{background:#09243f;border:1px solid #285171;border-radius:14px;padding:17px;margin-top:13px}
+.recup-panel h3{font-size:17px;margin:0 0 10px}
+.recup-leave-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:11px}
+.recup-panel .recup-action{margin-top:13px}
+.recup-day-settings{display:flex;align-items:end;gap:10px;flex-wrap:wrap}
+.recup-day-settings label{flex:1 1 185px;margin:0}
+.recup-day-settings .recup-action{margin:0}
+.recup-history-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #214761}
+.recup-history-row:last-child{border-bottom:none}
+.recup-history-row strong{font-size:14px;color:#eaf5ff}
+.recup-cancelled{opacity:.6}
+.recup-cancelled strong{text-decoration:line-through}
+.recup-small-button{border:1px solid #8b5443;border-radius:9px;color:#ffd5c8;background:#4d2924;padding:7px 10px;cursor:pointer;white-space:nowrap}
+@media(max-width:520px){.recup-overlay{padding:7px}.recup-card{padding:14px;max-height:96dvh;border-radius:13px}.recup-tiles{grid-template-columns:1fr}.recup-leave-grid{grid-template-columns:1fr}.recup-tile{padding:10px 13px}.recup-top h2{font-size:20px}}
