@@ -21,33 +21,43 @@ const tabSearch={pending:"",treated:"",sav_done:""};
 let clientFilter=null;
 let focusNotification=null;
 let focusClient=null;
-function countOpen(){
-  // Même sélection que l'onglet « Non traitées » (hors filtres de recherche).
-  return availableNotifications().filter(n=>normalizedStatus(n)==="pending").length;
+function notificationTotals(){
+  // Inclure les commandes en attente et commandees, jamais les SAV termines ni supprimes.
+  let toOrder=0,ordered=0;
+  for(const n of availableNotifications()){
+    const status=normalizedStatus(n);
+    if(status==="pending")toOrder++;
+    else if(status==="treated")ordered++;
+  }
+  return {toOrder,ordered,total:toOrder+ordered};
 }
 function updateCount(){
-  const count=countOpen();
+  const {toOrder,ordered,total}=notificationTotals();
   const badge=document.getElementById("notificationCount");
   const button=document.getElementById("notificationsButton");
-  const pending=count>0;
-  const background=pending?"#991b1b":"#166534";
-  const border=pending?"#f87171":"#4ade80";
-  const badgeBackground=pending?"#b91c1c":"#15803d";
+  const state=toOrder>0?"has-pending":ordered>0?"has-ordered":"empty";
+  const palette={
+    "has-pending":{background:"#991b1b",border:"#f87171",badge:"#b91c1c"},
+    "has-ordered":{background:"#a65309",border:"#fbbf24",badge:"#c16a10"},
+    "empty":{background:"#166534",border:"#4ade80",badge:"#15803d"}
+  }[state];
+  const msg=toOrder>0?
+    total+" notification"+(total===1?"":"s")+" : "+toOrder+" à commander et "+ordered+" commandée"+(ordered===1?"":"s"):
+    ordered>0?ordered+" notification"+(ordered===1?"":"s")+" commandée"+(ordered===1?"":"s"):
+    "Aucune notification à commander ou commandée";
   if(badge){
-    badge.textContent=String(count);
-    badge.style.setProperty("background-color",badgeBackground,"important");
+    badge.textContent=String(total);
+    badge.style.setProperty("background-color",palette.badge,"important");
     badge.style.setProperty("color","#ffffff","important");
-    badge.setAttribute("data-pending-state",pending?"has-pending":"empty");
+    badge.setAttribute("data-pending-state",state);
   }
   if(button){
-    // Coloration du bouton ENTIER (cloche + fond), pas uniquement du compteur.
-    button.setAttribute("data-pending-state",pending?"has-pending":"empty");
-    button.style.setProperty("background-color",background,"important");
-    button.style.setProperty("border-color",border,"important");
+    button.setAttribute("data-pending-state",state);
+    button.style.setProperty("background-color",palette.background,"important");
+    button.style.setProperty("border-color",palette.border,"important");
     button.style.setProperty("color","#ffffff","important");
-    const msg=count+" notification"+(count===1?"":"s")+" non traitée"+(count===1?"":"s")+". Ouvrir les notifications";
-    button.setAttribute("aria-label",msg);
-    button.title=msg;
+    button.setAttribute("aria-label",msg+". Ouvrir les notifications");
+    button.title=msg+". Ouvrir les notifications";
   }
 }
 function updateClientBadge(){
@@ -84,17 +94,17 @@ function renderList(){
   if(!pane)return;
   const list=filterForTab();
   if(!list.length){
-    pane.innerHTML='<p class="muted" style="padding:14px 0">'+(tabSearch[tab]?"Aucune notification pour cette recherche.":tab==="pending"?"Aucune notification non traitée.":tab==="treated"?"Aucune notification traitée.":"Aucun SAV terminé.")+'</p>';
+    pane.innerHTML='<p class="muted" style="padding:14px 0">'+(tabSearch[tab]?"Aucune notification pour cette recherche.":tab==="pending"?"Aucune demande à commander.":tab==="treated"?"Aucune commande en attente de SAV.":"Aucun SAV terminé.")+'</p>';
     return;
   }
   pane.innerHTML=list.map(n=>{
     const date=n.interventionDate||"",created=n.createdAt?new Date(n.createdAt).toLocaleString("fr-FR"):"";
     let action='';
-    if(tab==="pending")action='<button type="button" class="primary small" data-next-status="treated" data-notification-id="'+safe(n.id)+'">✓ Traité</button>';
+    if(tab==="pending")action='<button type="button" class="primary small" data-next-status="treated" data-notification-id="'+safe(n.id)+'">✓ Commandé</button>';
     else if(tab==="treated")action='<button type="button" class="primary small" data-next-status="sav_done" data-notification-id="'+safe(n.id)+'">✓ SAV ok</button>';
     else action='<span class="badge">✓ SAV terminé</span>';
     const dateInfo=tab==="sav_done"&&n.savCompletedAt?"SAV terminé le "+new Date(n.savCompletedAt).toLocaleString("fr-FR"):
-      tab==="treated"&&n.treatedAt?"Traitée le "+new Date(n.treatedAt).toLocaleString("fr-FR"):"Créée le "+created;
+      tab==="treated"&&n.treatedAt?"Commandée le "+new Date(n.treatedAt).toLocaleString("fr-FR"):"Créée le "+created;
     return '<article class="piece-notification" id="piece-row-'+safe(n.id)+'" data-order-id="'+safe(n.id)+'">'+
       '<div class="row" style="justify-content:space-between;align-items:flex-start"><strong>'+safe(n.clientName||"Client")+'</strong>'+
       '<div class="piece-notification-actions">'+action+
@@ -117,7 +127,7 @@ function renderNavigation(){
     const el=document.getElementById("notificationTab_"+status);
     if(!el)continue;
     const count=list.filter(n=>normalizedStatus(n)===status&&(clientFilter===null||String(n.clientId)===String(clientFilter))).length;
-    const label=status==="pending"?"Non traitées":status==="treated"?"Traitées":"SAV terminé";
+    const label=status==="pending"?"À commander":status==="treated"?"Commandé":"SAV terminé";
     el.textContent=label+" ("+count+")";
     el.classList.toggle("active",tab===status);
     el.setAttribute("aria-selected",String(tab===status));

@@ -776,11 +776,13 @@ function goHome(){document.getElementById("stock").classList.add("hidden");if(wi
 loadEquipmentCatalog();loadDiagnostics();renderDiagnosticMenu();document.getElementById("search").addEventListener("input",search);document.getElementById("maintenanceMonthFilter").addEventListener("change",search);document.getElementById("clientSort").addEventListener("change",search);search();
 </script>
 <style id="pending-notifications-palette">
-/* Couleur de l'accueil basée uniquement sur l'onglet « Non traitées ». */
+/* Priorité : rouge si à commander, sinon orange si commandé, sinon vert. */
 #notificationsButton[data-pending-state="empty"]{background:#166534!important;border-color:#4ade80!important;color:#fff!important}
 #notificationsButton[data-pending-state="has-pending"]{background:#991b1b!important;border-color:#f87171!important;color:#fff!important}
+#notificationsButton[data-pending-state="has-ordered"]{background:#a65309!important;border-color:#fbbf24!important;color:#fff!important}
 #notificationsButton[data-pending-state="empty"] #notificationCount{background:#15803d!important;color:#fff!important}
 #notificationsButton[data-pending-state="has-pending"] #notificationCount{background:#b91c1c!important;color:#fff!important}
+#notificationsButton[data-pending-state="has-ordered"] #notificationCount{background:#c16a10!important;color:#fff!important}
 </style>
 <script>
 (function(){
@@ -788,8 +790,11 @@ loadEquipmentCatalog();loadDiagnostics();renderDiagnosticMenu();document.getElem
   try{
     var all=JSON.parse(localStorage.getItem("metier_notifications_pieces_v1")||"{}");
     var values=(all&&typeof all==="object"&&!Array.isArray(all))?Object.values(all):[];
-    var count=values.filter(function(n){return n&&n.id&&!n.deleted&&n.status!=="treated"&&n.status!=="sav_done";}).length;
-    var state=count>0?"has-pending":"empty";
+    var live=values.filter(function(n){return n&&n.id&&!n.deleted;});
+    var toOrder=live.filter(function(n){return n.status!=="treated"&&n.status!=="sav_done";}).length;
+    var ordered=live.filter(function(n){return n.status==="treated";}).length;
+    var count=toOrder+ordered;
+    var state=toOrder>0?"has-pending":ordered>0?"has-ordered":"empty";
     var b=document.getElementById("notificationsButton"),n=document.getElementById("notificationCount");
     if(b)b.setAttribute("data-pending-state",state);
     if(n){n.setAttribute("data-pending-state",state);n.textContent=String(count);}
@@ -797,7 +802,7 @@ loadEquipmentCatalog();loadDiagnostics();renderDiagnosticMenu();document.getElem
 })();
 </script>
 <script src="./navigation.js?v=20261020-bartonek-cleanup2"></script>
-<script src="./notifications.js"></script>
+<script src="./notifications.js?v=20261027-commande"></script>
 <!-- V2 CLOUD SYNC ENGINE
      Backend: Supabase Postgres + Auth + Realtime + Storage.
      IMPORTANT: only the publishable/anon key belongs in this browser file.
