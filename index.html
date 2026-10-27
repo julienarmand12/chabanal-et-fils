@@ -65,6 +65,22 @@ h1,h2,h3,p{margin-top:0}.grid{display:grid;grid-template-columns:repeat(auto-fit
 .equipment-search-done{flex:none;min-width:47px;padding:10px 11px}
 .equipment-model-results{display:grid;gap:3px;max-height:350px;overflow-y:auto;overscroll-behavior:contain}
 .equipment-model-results .equipment-menu-row{min-height:48px}
+/* Marques : sous-menus dépliables, conçus pour les téléphones */
+#equipmentModelResults .equipment-brand-group{display:block;border:1px solid #28567d;background:#082742;border-radius:10px;padding:0;margin:5px 0;overflow:visible}
+#equipmentModelResults .equipment-brand-group[open]{border-color:#397cb0;background:#092a48}
+#equipmentModelResults .equipment-brand-summary{list-style:none;display:flex;align-items:center;gap:10px;min-height:48px;padding:10px 12px;cursor:pointer;font-weight:800;color:#edf7ff;line-height:1.35}
+#equipmentModelResults .equipment-brand-summary::-webkit-details-marker{display:none}
+#equipmentModelResults .equipment-brand-summary::marker{content:""}
+#equipmentModelResults .equipment-brand-summary:hover{background:#105082}
+#equipmentModelResults .equipment-brand-summary:focus-visible{outline:2px solid #7ac6ff;outline-offset:1px;border-radius:10px}
+#equipmentModelResults .equipment-brand-name{min-width:0;flex:1;overflow-wrap:anywhere}
+#equipmentModelResults .equipment-brand-count{font-size:11px;color:#a9cae2;white-space:nowrap;background:#143c5c;padding:4px 8px;border-radius:99px}
+#equipmentModelResults .equipment-brand-arrow{font-size:14px;color:#94caef;transition:transform .16s ease}
+#equipmentModelResults .equipment-brand-group[open] .equipment-brand-arrow{transform:rotate(180deg)}
+#equipmentModelResults .equipment-brand-models{border-top:1px solid #28567d;padding:3px 5px 6px}
+#equipmentModelResults .equipment-brand-models .equipment-menu-row{width:100%;padding:10px 9px}
+#equipmentModelResults .equipment-brand-models .equipment-menu-row+.equipment-menu-row{border-top:1px solid #20425e;border-radius:0}
+@media(max-width:520px){#equipmentModelResults .equipment-brand-summary{padding:9px 10px;min-height:45px}#equipmentModelResults .equipment-brand-count{font-size:10px}}
 /* Thème Halloween V2.7 : décor derrière les fiches, sans bloquer les clics. */
 body{
  background:
@@ -623,18 +639,44 @@ function renderEquipmentMenu(type){
  +'<button class="secondary small equipment-search-done" type="button" onclick="finishEquipmentSearch()">OK</button></div>'
  +'<div id="equipmentModelResults" class="equipment-model-results">'+renderEquipmentModelRows(list)+'</div>';
 }
-function renderEquipmentModelRows(list){
- return list.length?list.map(e=>'<button type="button" class="equipment-menu-row" onclick="openEquipmentFromSearch(\''+e.id+'\',event)"><div class="eq-main"><div class="eq-title">'+esc(modelName(e))+'</div><div class="eq-meta">'+esc(modelClientIds(e.id).length+' client(s) · '+modelDocs(e).length+' document(s)')+'</div></div><div>›</div></button>').join("")
- :'<div class="equipment-empty">Aucun modèle correspondant.</div>';
+/* Présentation par marque pour chaudières, PAC air/air et adoucisseurs. */
+function equipmentSearchNormalize(value){
+ return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("fr").trim();
+}
+function renderEquipmentModelRows(list,options={}){
+ const empty=options.emptyMessage||"Aucun modèle correspondant.";
+ if(!list.length)return '<div class="equipment-empty">'+esc(empty)+'</div>';
+ const groups=new Map();
+ for(const m of list){
+  const brand=String(m.brand||"").trim()||"Sans marque";
+  const key=equipmentSearchNormalize(brand);
+  if(!groups.has(key))groups.set(key,{brand,models:[]});
+  groups.get(key).models.push(m);
+ }
+ const brands=[...groups.values()].sort((a,b)=>a.brand.localeCompare(b.brand,"fr",{sensitivity:"base"}));
+ return brands.map(group=>{
+  const models=group.models.sort((a,b)=>String(a.model||modelName(a)).localeCompare(String(b.model||modelName(b)),"fr",{sensitivity:"base"}));
+  const rows=models.map(m=>{
+   const label=String(m.model||"").trim()||modelName(m);
+   const legacy=options.pac&&m.pacUnit!=="indoor"&&m.pacUnit!=="outdoor"?"Modèle existant à classer · ":"";
+   const info=legacy+modelClientIds(m.id).length+" client(s) · "+modelDocs(m).length+" document(s)";
+   return '<button type="button" class="equipment-menu-row" data-equipment-model-id="'+esc(m.id)+'" onclick="openEquipmentFromSearch(this.dataset.equipmentModelId,event)">'+
+    '<div class="eq-main"><div class="eq-title">'+esc(label)+'</div><div class="eq-meta">'+esc(info)+'</div></div><span aria-hidden="true">›</span></button>';
+  }).join("");
+  return '<details class="equipment-brand-group"'+(options.searching?' open':'')+'>'+
+   '<summary class="equipment-brand-summary"><span class="equipment-brand-name">'+esc(group.brand)+'</span>'+
+   '<span class="equipment-brand-count">'+models.length+' modèle'+(models.length>1?'s':'')+'</span>'+
+   '<span class="equipment-brand-arrow" aria-hidden="true">▾</span></summary>'+
+   '<div class="equipment-brand-models">'+rows+'</div></details>';
+ }).join("");
 }
 function filterEquipmentModels(type,q){
  const box=document.getElementById("equipmentMenu");if(!box)return;
- const term=String(q||"").toLocaleLowerCase("fr");
- const list=equipmentModels.filter(e=>e.type===type&&modelName(e).toLocaleLowerCase("fr").includes(term))
-  .sort((a,b)=>modelName(a).localeCompare(modelName(b),"fr",{sensitivity:"base"}));
+ const term=equipmentSearchNormalize(q);
+ const models=equipmentModels.filter(m=>m.type===type&&equipmentSearchNormalize(modelName(m)).includes(term));
  const results=box.querySelector("#equipmentModelResults");
- // Ne remplacer que les résultats : le champ garde le focus, le curseur et le clavier.
- if(results)results.innerHTML=renderEquipmentModelRows(list);
+ // Mettre à jour uniquement la liste, sans recréer la barre de recherche.
+ if(results)results.innerHTML=renderEquipmentModelRows(models,{searching:!!term});
 }
 
 function newEquipmentModel(type){type=type||"chaudiere";document.body.insertAdjacentHTML("beforeend",'<div class="modal-backdrop" id="modelModal"><div class="modal"><div class="row" style="justify-content:space-between"><h2>'+eqTypeLabel(type)+' — Nouveau modèle</h2><button class="secondary" onclick="closeModelModal()">✕</button></div><div class="modal-grid"><div><label>Type</label><select id="model_type" onchange="updateBoilerTypeField(\'model\')"><option value="chaudiere" '+(type==="chaudiere"?"selected":"")+'>🔥 Chaudière</option><option value="pac_air_air" '+(type==="pac_air_air"?"selected":"")+'>❄️ PAC air/air</option><option value="adoucisseur" '+(type==="adoucisseur"?"selected":"")+'>💧 Adoucisseur</option></select></div><div id="model_boiler_type_field"><label for="model_boiler_type">Type de chaudière</label><select id="model_boiler_type" class="model-search" onchange="updateBoilerTypeField(\'model\')"><option value="">À renseigner</option><option value="condensation">Condensation</option><option value="tirage_naturel">Tirage naturel</option><option value="fioul">Fioul</option></select></div><div id="model_gicleur_field" class="full" style="display:none"><label for="model_gicleur">Gicleur</label><input id="model_gicleur" type="text" maxlength="160" placeholder="Ex. 0,65 USgal/h – 60° S"></div><div><label>Marque</label><input id="model_brand" placeholder="Ex. Frisquet"></div><div><label>Modèle</label><input id="model_model" placeholder="Ex. Hydroconfort 20"></div><div class="full"><label>Caractéristiques / notes techniques</label><textarea id="model_notes" placeholder="Puissance, fluide, technologie, remarques…"></textarea></div><div class="full"><label>Documentation</label><input id="model_docs" type="file" accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,.txt" multiple onchange="previewModelDocs(this.files)"><div id="modelDocsPreview" class="view-list"></div></div></div><div class="form-actions"><button class="primary" onclick="saveEquipmentModel()">💾 Enregistrer le modèle</button><button class="secondary" onclick="closeModelModal()">Annuler</button></div></div></div>');previewModelDocs([]);updateBoilerTypeField("model")}
@@ -801,7 +843,7 @@ loadEquipmentCatalog();loadDiagnostics();renderDiagnosticMenu();document.getElem
   }catch(e){}
 })();
 </script>
-<script src="./navigation.js?v=20261020-bartonek-cleanup2"></script>
+<script src="./navigation.js?v=marques-20261027"></script>
 <script src="./notifications.js?v=20261027-commande"></script>
 <!-- V2 CLOUD SYNC ENGINE
      Backend: Supabase Postgres + Auth + Realtime + Storage.

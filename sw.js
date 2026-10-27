@@ -1,4 +1,4 @@
-const CACHE='chabanal-v1-1-notifications-commandes-20261027';
+const CACHE='chabanal-v1-1-equipements-groupes-marques-20261027';
 const SHELL=['./','./index.html','./manifest.webmanifest','./navigation.js','./pac-split.js','./sync-diagnostic.js','./notifications.js','./media-sync.js','./stock.js','./stock.css','./heures-recup.js','./heures-recup.css','./icon-chabanal-192.png','./icon-chabanal-512.png','./fonds/01.webp','./fonds/02.webp','./fonds/03.webp','./fonds/04.webp','./fonds/05.webp','./fonds/06.webp','./fonds/07.webp','./fonds/08.webp','./fonds/09.webp','./fonds/10.webp','./fonds/11.webp','./fonds/12.webp'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(Promise.all([caches.keys().then(names=>Promise.all(names.filter(name=>name.startsWith('chabanal-')&&name!==CACHE).map(name=>caches.delete(name)))),self.clients.claim()])));

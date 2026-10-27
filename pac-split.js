@@ -72,14 +72,14 @@ const orig={
 
 function renderPacRows(query){
  const box=get("equipmentMenu"),target=box&&box.querySelector("#equipmentModelResults");if(!target)return;
- const q=String(query||"").toLocaleLowerCase("fr").trim();
- const list=pacModels(catalogTab).filter(m=>modelName(m).toLocaleLowerCase("fr").includes(q));
- target.innerHTML=list.length?list.map(m=>
-  '<button type="button" class="equipment-menu-row" onclick="openEquipmentFromSearch(\''+e(m.id)+'\',event)">'+
-  '<div class="eq-main"><div class="eq-title">'+e(modelName(m))+'</div>'+
-  '<div class="eq-meta">'+(role(m)==="legacy"?"Modèle existant à classer · ":"")+
-  e(modelClientIds(m.id).length+" client(s) · "+modelDocs(m).length+" document(s)")+'</div></div><div>›</div></button>'
- ).join(""):'<div class="equipment-empty">Aucun modèle '+(catalogTab==="outdoor"?"de groupe extérieur":"d’unité intérieure")+' correspondant.</div>';
+ const q=equipmentSearchNormalize(query);
+ const list=pacModels(catalogTab).filter(m=>equipmentSearchNormalize(modelName(m)).includes(q));
+ // Conserver les sous-catalogues Groupe extérieur / Unité intérieure, regrouper chacun par marque.
+ target.innerHTML=renderEquipmentModelRows(list,{
+  pac:true,
+  searching:!!q,
+  emptyMessage:"Aucun modèle "+(catalogTab==="outdoor"?"de groupe extérieur":"d’unité intérieure")+" correspondant."
+ });
 }
 function pacCatalog(){
  const box=get("equipmentMenu");if(!box)return;

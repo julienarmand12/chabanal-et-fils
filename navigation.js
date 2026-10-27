@@ -265,7 +265,7 @@
   function loadPacModule(){
     if(document.querySelector('script[data-chabanal-pac-split]'))return;
     const script=document.createElement('script');
-    script.src='./pac-split.js';
+    script.src='./pac-split.js?v=marques-20261027';
     script.dataset.chabanalPacSplit='1';
     script.async=false;
     document.body.appendChild(script);
