@@ -704,7 +704,7 @@ function getModelBoilerTypeLabel(m){
  return type==="condensation"?"Condensation":type==="tirage_naturel"?"Tirage naturel":type==="fioul"?"Fioul":"";
 }
 /* Etiquettes uniquement pour les chaudières réellement attribuées à ce client.
-   Ne rien afficher pour les modèles non renseignés ou les chaudières fioul. */
+   Ne rien afficher lorsque le type de chaudière n'est pas renseigné. */
 function clientBoilerBadges(c){
  if(!c||!c.id)return "";
  const assigned=Array.isArray(equipmentAssignments[c.id])?equipmentAssignments[c.id]:[];
@@ -713,7 +713,7 @@ function clientBoilerBadges(c){
   const model=equipmentModels.find(m=>m.id===modelId&&m.type==="chaudiere");
   if(!model)continue;
   const kind=getModelBoilerType(model);
-  if(kind!=="condensation"&&kind!=="tirage_naturel")continue;
+  if(kind!=="condensation"&&kind!=="tirage_naturel"&&kind!=="fioul")continue;
   const label=getModelBoilerTypeLabel(model);
   if(label&&!labels.includes(label))labels.push(label);
  }
