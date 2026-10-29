@@ -22,7 +22,7 @@ header{background:linear-gradient(90deg,#021328,#062a54 70%,#041b36);color:#fff;
 .client-contract-badge.client-contract-regit{background:#81460d;border:1px solid #ffae43;color:#fff1d9}
 .client-contract-badge .client-contract-text{display:inline;color:inherit;opacity:1;visibility:visible;font-size:inherit;font-weight:inherit;line-height:inherit}
 .client-menu-row .client-contract-badge{margin-left:6px;font-size:10px;padding:3px 6px}
-.client-boiler-type-badge{display:inline-flex;align-items:center;min-height:22px;padding:3px 8px;border:1px solid #4b89af;background:#10334f;color:#d5efff;border-radius:99px;font-size:11px;font-weight:750;line-height:1.3;white-space:nowrap}
+.client-contract-badge.client-boiler-type-badge{background:#be185d;border:1px solid #f9a8d4;color:#fff1f7}
 @media(max-width:650px){.client-search-wrap{min-width:0;flex:1 1 100%}}
 
 #maintenanceMonthFilter{width:auto;min-width:160px;max-width:215px;flex:1 1 160px;padding:12px 9px;border:1px solid #2774a3;border-radius:11px;background:#0a294a;color:#eef7ff;font-size:14px;cursor:pointer}
@@ -717,7 +717,7 @@ function clientBoilerBadges(c){
   const label=getModelBoilerTypeLabel(model);
   if(label&&!labels.includes(label))labels.push(label);
  }
- return labels.map(label=>'<span class="client-boiler-type-badge" title="Type de chaudière attribuée au client">'+esc(label)+'</span>').join("");
+ return labels.map(label=>'<span class="badge client-contract-badge client-boiler-type-badge" title="Type de chaudière attribuée au client">'+esc(label)+'</span>').join("");
 }
 function saveModelBoilerType(modelId,value){
  const model=equipmentModels.find(m=>m.id===modelId&&m.type==="chaudiere");
