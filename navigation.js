@@ -272,7 +272,7 @@
     // Module de diagnostic entièrement en lecture seule (aucun changement métier).
     if(!document.querySelector('script[data-chabanal-sync-diagnostic]')){
       const diagnostic=document.createElement('script');
-      diagnostic.src='./sync-diagnostic.js?v=diagnostics-separes-20261116-2';
+      diagnostic.src='./sync-diagnostic.js?v=analyse-daymier-panel-20261116-4';
       diagnostic.dataset.chabanalSyncDiagnostic='1';
       diagnostic.async=false;
       document.body.appendChild(diagnostic);
