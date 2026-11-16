@@ -155,7 +155,7 @@ function init(){
  holder.className="sync-ro-holder";
  holder.innerHTML='<div class="sync-ro-actions">'+
  '<button type="button" class="secondary small" id="sync-readonly-button">🔎 Analyser les conflits (lecture seule)</button>'+
- '<a class="secondary small sync-ro-link" href="./diagnostic-interventions.html">📋 Diagnostic des interventions</a><a class="secondary small sync-ro-link" href="./diagnostic-sync.html">🔄 Diagnostic de synchronisation</a>'+
+ '<a class="secondary small sync-ro-link" href="./diagnostic-interventions.html">📋 Diagnostic des interventions</a><a class="secondary small sync-ro-link" href="./diagnostic-sync.html">🔄 Diagnostic de synchronisation</a><a class="secondary small sync-ro-link" href="./analyse-daymier.html">🧩 Analyse ciblée Daymier</a>'+
  '</div><div id="sync-readonly-results" class="sync-ro-results" hidden></div>';
  panel.appendChild(holder);
  el("sync-readonly-button")?.addEventListener("click",run);
