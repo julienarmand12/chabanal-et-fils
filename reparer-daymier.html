@@ -89,7 +89,9 @@ $('apply').onclick=async()=>{if(!saved||!backupDone||!$('confirmed').checked||bu
  const verify=await fetchCloud(saved.sb),check=verify.value_json.filter(c=>String(c?.id)===ID),gcheck=verify.value_json.filter(c=>String(c?.id)===GID);
  if(Number(verify.version)!==version||check.length!==1||!same(check[0],current.daymier)||gcheck.length!==1||!same(gcheck[0],current.gallay))throw Error('Contrôle après écriture incertain. La copie cloud doit être diagnostiquée avant toute nouvelle tentative.');
  const latestQueue=get(QUEUE)||{};if(sig(latestQueue)!==saved.queueSig)throw Error('Cloud réparé et vérifié, mais la file locale a changé : elle est conservée pour examen manuel.');
- const nextQueue={...latestQueue};\n // Ne jamais jeter la modification Gallay : isoler son changement dans le patch restant.\n const remainingChanges=saved.ticket.patch?.changes?.[GID];\n if(remainingChanges){nextQueue[KEY]={...saved.ticket,patch:{...saved.ticket.patch,changes:{[GID]:remainingChanges}}};}\n else{delete nextQueue[KEY];}\n localStorage.setItem(QUEUE,JSON.stringify(nextQueue));
+ const nextQueue={...latestQueue};
+ // Ne jamais jeter la modification Gallay : isoler son changement dans le patch restant.
+ const remainingChanges=saved.ticket.patch?.changes?.[GID];\n if(remainingChanges){nextQueue[KEY]={...saved.ticket,patch:{...saved.ticket.patch,changes:{[GID]:remainingChanges}}};}\n else{delete nextQueue[KEY];}\n localStorage.setItem(QUEUE,JSON.stringify(nextQueue));
  const latestMeta=get(META)||{};latestMeta[KEY]=version;localStorage.setItem(META,JSON.stringify(latestMeta));
  try{const h=await saved.sb.from('app_sync_history').insert({key_name:KEY,version,value_json:current.value,change_reason:'reconciliation-daymier-intervention-2026-11-16',updated_by:auth.data.user.id});if(h.error)console.warn('Historique non enregistré',h.error.message)}catch(e){console.warn(e)}
  $('report').textContent+='\n\nRÉSULTAT : version cloud '+version+' vérifiée. Gallay intacte. Changement Gallay conservé dans la file locale pour synchronisation ultérieure. Les autres files locales ont été conservées.';
