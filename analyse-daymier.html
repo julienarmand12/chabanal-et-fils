@@ -1,0 +1,56 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Analyse ciblée Daymier — Chabanal et fils</title><meta name="robots" content="noindex,nofollow"><style>:root{font-family:system-ui,Arial,sans-serif;background:#03162e;color:#eaf2ff}*{box-sizing:border-box}body{max-width:850px;margin:auto;padding:16px;line-height:1.5}section{background:#092847;border:1px solid #28577d;border-radius:12px;padding:14px;margin:14px 0}button,a{display:inline-block;background:#147ce0;color:white;border:0;border-radius:8px;padding:10px 14px;text-decoration:none;font-weight:650;margin:4px 6px 4px 0}button:disabled{opacity:.5}.muted{color:#bfd0e5}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#061b34;border-radius:8px;padding:12px;font-size:.84rem}.warn{color:#ffd184}.ok{color:#8de7a6}</style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script></head><body><h1>Analyse ciblée de l’intervention Daymier</h1><p class="muted">Contrôle strictement en lecture seule du téléphone 2. Cette page compare la fiche locale, la fiche cloud et le patch conservé dans la file d’attente. Aucune donnée n’est modifiée.</p><button id="run">Analyser Daymier</button><a href="./">Retour à l’application</a><section id="status">En attente de l’analyse.</section><section><h2>Rapport à transmettre</h2><pre id="report">Lancez l’analyse.</pre><button id="copy" disabled>Copier le rapport</button></section><script>
+(()=>{'use strict';
+const CLIENT='metier_clients_v1_2_corrigee',QUEUE='chabanal_v2_sync_queue',META='chabanal_v2_cloud_meta',CFG='chabanal_v2_cloud_config',KEY='metier_clients_v1_2_corrigee';
+const $=id=>document.getElementById(id),get=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}},arr=x=>Array.isArray(x)?x:[];
+const stable=x=>Array.isArray(x)?x.map(stable):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x;
+const same=(a,b)=>JSON.stringify(stable(a))===JSON.stringify(stable(b));
+const normalize=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
+const count=(xs)=>xs.reduce((n,c)=>n+arr(c.interventions).length,0);
+function summarizeClient(c){if(!c)return 'Fiche absente';return 'ID client : '+c.id+'\nNom : '+c.name+'\nNombre d’interventions : '+arr(c.interventions).length+'\nInterventions :\n'+arr(c.interventions).map((x,i)=>(i+1)+'. '+JSON.stringify(x)).join('\n')}
+function mergeInterventions(base,local,remote){
+ if(!Array.isArray(base)||!Array.isArray(local)||!Array.isArray(remote))return null;
+ const key=x=>JSON.stringify(stable(x)),countMap=a=>{const m=new Map();a.forEach(x=>m.set(key(x),(m.get(key(x))||0)+1));return m};
+ const b=countMap(base),l=countMap(local),r=countMap(remote);
+ const ambiguous=(branch,other)=>{const bc=countMap(branch),oc=countMap(other);for(const item of base){const k=key(item),n=b.get(k)||0;if((bc.get(k)||0)>=n||(oc.get(k)||0)>=n)continue;if(branch.some(x=>x&&x.iso===item.iso&&!b.has(key(x))))return true}return false};
+ if(ambiguous(local,remote)||ambiguous(remote,local))return null;
+ const target=new Map();for(const k of new Set([...b.keys(),...l.keys(),...r.keys()])){const o=b.get(k)||0,ours=l.get(k)||0,theirs=r.get(k)||0;target.set(k,Math.max(0,o-Math.max(0,o-ours,o-theirs))+Math.max(0,ours-o,theirs-o))}
+ const out=[],used=new Map();for(const item of remote.concat(local)){const k=key(item),n=used.get(k)||0;if(n>=(target.get(k)||0))continue;out.push(item);used.set(k,n+1)}return out;
+}
+function mergeClient(before,after,remote){
+ if(same(remote,after))return {value:remote,why:'Cloud déjà identique à la modification locale'};
+ if(before===null)return {value:remote===null?after:undefined,why:'Nouvelle fiche'};
+ if(after===null)return {value:same(remote,before)?null:undefined,why:'Suppression'};
+ if(remote===null||!remote||typeof remote!=='object')return {value:undefined,why:'Fiche cloud absente ou invalide'};
+ const out={...remote},fields=[...new Set([...Object.keys(before),...Object.keys(after)])],details=[];
+ for(const field of fields){const was=Object.prototype.hasOwnProperty.call(before,field)?before[field]:undefined,now=Object.prototype.hasOwnProperty.call(after,field)?after[field]:undefined;if(same(was,now))continue;const current=Object.prototype.hasOwnProperty.call(remote,field)?remote[field]:undefined;let chosen=now,why='Modification locale compatible';
+  if(field==='interventions'&&!same(current,was)&&!same(current,now)){chosen=mergeInterventions(was,now,current);why=chosen===null?'Conflit ambigu entre historiques':'Fusion des interventions possible'}
+  else if(!same(current,was)&&!same(current,now)){details.push({field,why:'CONFLIT : valeur cloud modifiée indépendamment de la base et de la modification locale',before:was,local:now,cloud:current});return {value:undefined,why:'Conflit sur le champ '+field,details}}
+  if(chosen===null&&field==='interventions'){details.push({field,why:'Fusion impossible : intervention modifiée/supprimée simultanément'});return {value:undefined,why:'Fusion des interventions ambiguë',details}}
+  if(chosen===undefined)delete out[field];else out[field]=chosen;
+  details.push({field,why,base:was,local:now,cloud:current,merged:chosen});
+ }
+ return {value:out,why:'Fusion des champs calculée sans écriture',details};
+}
+let report='';
+$('copy').onclick=async()=>{try{await navigator.clipboard.writeText(report);$('status').textContent='Rapport copié.'}catch(e){$('status').textContent='Copie impossible : sélectionnez le texte.'}};
+$('run').onclick=async()=>{$('run').disabled=true;$('copy').disabled=true;$('status').textContent='Lecture des données locales et cloud…';try{
+ const local=arr(get(CLIENT)),queue=get(QUEUE)||{},meta=get(META)||{},pending=queue[KEY]||null;
+ const candidates=local.filter(c=>normalize(c?.name)==='daymier');if(candidates.length!==1)throw Error('Le téléphone doit contenir exactement une fiche Daymier. Fiches trouvées : '+candidates.length);
+ if(!pending?.patch||pending.patch.kind!=='clients')throw Error('La file ne contient pas de patch client exploitable. Motif : '+(pending?.reason||'aucun')+'. Patch : '+(pending?.patch?'type inattendu':'absent'));
+ const cfg=get(CFG);if(!cfg?.url||!cfg?.key||!window.supabase)throw Error('Configuration Supabase ou bibliothèque indisponible.');
+ const sb=window.supabase.createClient(cfg.url,cfg.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storage:localStorage}});
+ const session=await sb.auth.getSession();if(session.error)throw session.error;if(!session.data.session)throw Error('Session Supabase absente. Ouvrez l’application et reconnectez-vous.');
+ const {data,error}=await sb.from('app_sync_state').select('value_json,version').eq('key_name',KEY).maybeSingle();if(error)throw error;if(!data||!Array.isArray(data.value_json))throw Error('Copie client cloud absente ou invalide.');
+ const id=String(candidates[0].id),cloudMatches=data.value_json.filter(c=>String(c?.id)===id),change=pending.patch.changes?.[id];
+ const lines=['ANALYSE CIBLÉE DAYMIER — LECTURE SEULE','Date : '+new Date().toLocaleString('fr-FR'),'Version cloud clients : '+data.version,'Version locale connue : '+Number(meta[KEY]||0),'File : '+pending.reason+' | '+pending.queuedAt,'Type patch : '+pending.patch.kind,'Nombre de changements dans le patch : '+Object.keys(pending.patch.changes||{}).length,'Fiche Daymier locale : '+candidates.length,'Fiche Daymier cloud avec même ID : '+cloudMatches.length,''];
+ if(!change)lines.push('AUCUN CHANGEMENT DAYMIER DANS LE PATCH. Identifiants patch : '+Object.keys(pending.patch.changes||{}).join(', '));
+ else{
+  const remote=cloudMatches.length===1?cloudMatches[0]:null;
+  lines.push('--- BASE DU PATCH (avant) ---',summarizeClient(change.before),'','--- MODIFICATION LOCALE (après) ---',summarizeClient(change.after),'','--- FICHE CLOUD ACTUELLE ---',summarizeClient(remote),'');
+  if(cloudMatches.length!==1)lines.push('ALERTE : nombre de fiches cloud portant cet ID = '+cloudMatches.length+' ; fusion non calculée.');
+  else{const result=mergeClient(change.before,change.after,remote);lines.push('--- ANALYSE DE FUSION (simulation uniquement) ---','Résultat : '+result.why);for(const d of result.details||[])lines.push('Champ : '+d.field+' | '+d.why);if(result.value!==undefined)lines.push('Interventions après fusion simulée : '+arr(result.value.interventions).length,'Dernière intervention : '+JSON.stringify(arr(result.value.interventions).slice(-1)[0]||null));}
+ }
+ report=lines.join('\n');$('report').textContent=report;$('copy').disabled=false;$('status').textContent='Analyse terminée. Aucune donnée n’a été modifiée.';
+ }catch(e){report='ANALYSE DAYMIER INCOMPLÈTE\n'+(e?.message||String(e));$('report').textContent=report;$('status').textContent=report}finally{$('run').disabled=false}};
+})();
+</script></body></html>
