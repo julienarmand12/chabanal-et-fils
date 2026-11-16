@@ -12,7 +12,7 @@ label{display:flex;align-items:start;gap:10px;margin:15px 0}input{width:21px;hei
 </style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script></head>
 <body>
 <h1>Réparation ciblée de Daymier</h1>
-<p class="subtle">Cette procédure concerne uniquement l'entretien du 16/11/2026. Elle conserve la valeur cloud actuelle de « addressComplement », ne modifie pas Gallay, sauvegarde les états avant écriture et vérifie la version Supabase. La file client du téléphone 2 ne sera retirée qu'après confirmation de l'écriture cloud.</p>
+<p class="subtle">Cette procédure concerne uniquement l'entretien du 16/11/2026. Elle conserve la valeur cloud actuelle de « addressComplement », répare uniquement Daymier et conserve séparément la modification Gallay dans la file locale pour une synchronisation ultérieure. La sauvegarde et les contrôles de version Supabase restent obligatoires. La file client du téléphone 2 ne sera retirée qu'après confirmation de l'écriture cloud.</p>
 <div class="panel"><h2>1. Vérification sans écriture</h2><button id="verify">Vérifier les conditions</button><p id="status" role="status">En attente.</p><pre id="report">—</pre></div>
 <div class="panel"><h2>2. Sauvegarde obligatoire</h2><button id="backup" disabled>Télécharger la sauvegarde JSON</button><label><input id="confirmed" type="checkbox" disabled>J'ai vérifié que le fichier JSON est bien téléchargé sur le téléphone 2.</label></div>
 <div class="panel"><h2>3. Réparation</h2><p>La réparation sera refusée si une donnée ou une version a changé depuis le contrôle. Elle mettra à jour uniquement la ligne clients dans Supabase, puis retirera uniquement l'entrée clients de la file locale si elle est toujours strictement identique à celle sauvegardée.</p><button id="apply" class="fix" disabled>Réparer Daymier et finaliser la file</button><p id="result" role="status"></p></div>
@@ -38,7 +38,7 @@ function mergeInterventions(base,local,remote){
 function prepare(patch,cloud){
  const changes=patch?.changes||{},ids=Object.keys(changes);if(ids.length!==2||!changes[ID]||!changes[GID])throw Error('Le patch ne correspond plus aux deux fiches attendues (Daymier et Gallay).');
  const day=changes[ID],gal=changes[GID];
- if(!same(gal.before,gal.after))throw Error('La fiche Gallay contient finalement une modification : arrêt de sécurité.');
+ if(!gal||!Object.prototype.hasOwnProperty.call(gal,'before')||!Object.prototype.hasOwnProperty.call(gal,'after'))throw Error('Le changement Gallay est incomplet : arrêt de sécurité.');
  if(!Array.isArray(cloud))throw Error('Liste cloud invalide.');
  const matches=cloud.filter(c=>String(c?.id)===ID);if(matches.length!==1)throw Error('Fiche Daymier absente ou présente plusieurs fois dans le cloud.');
  const gmatches=cloud.filter(c=>String(c?.id)===GID);if(gmatches.length!==1)throw Error('Fiche Gallay absente ou présente plusieurs fois dans le cloud.');
@@ -72,7 +72,7 @@ $('verify').onclick=async()=>{reset();busy=true;controls();status('Lecture des d
  if(!same(localGal[0],ticket.patch.changes?.[GID]?.after))throw Error('La fiche locale Gallay ne correspond plus au patch.');
  const sb=await connect(),remote=await fetchCloud(sb),plan=prepare(ticket.patch,remote.value_json);
  saved={sb,localClients,queue,meta,ticket,remote,plan,localSig:sig(localClients),queueSig:sig(queue),metaSig:sig(meta),remoteSig:sig(remote.value_json)};
- $('report').textContent=['Vérification réussie — aucune écriture effectuée.','Version cloud actuelle : '+remote.version,'Clients locaux : '+localClients.length,'Fiche Daymier : unique en local et dans le cloud','Interventions Daymier après fusion : '+arr(plan.daymier.interventions).length,'Dernière intervention : '+JSON.stringify(arr(plan.daymier.interventions).slice(-1)[0]),'Fiche Gallay : strictement inchangée dans le patch et sera laissée intacte.','addressComplement : valeur cloud conservée.','Champs préparés :',...plan.notes,'Autres entrées de file : '+Object.keys(queue).filter(k=>k!==KEY).join(', ')].join('\n');
+ $('report').textContent=['Vérification réussie — aucune écriture effectuée.','Version cloud actuelle : '+remote.version,'Clients locaux : '+localClients.length,'Fiche Daymier : unique en local et dans le cloud','Interventions Daymier après fusion : '+arr(plan.daymier.interventions).length,'Dernière intervention : '+JSON.stringify(arr(plan.daymier.interventions).slice(-1)[0]),'Fiche Gallay : non modifiée dans le cloud ; son changement local est conservé dans la file pour synchronisation ultérieure.','addressComplement : valeur cloud conservée.','Champs préparés :',...plan.notes,'Autres entrées de file : '+Object.keys(queue).filter(k=>k!==KEY).join(', ')].join('\n');
  status('Contrôles réussis. Créez et vérifiez la sauvegarde avant de continuer.','ok');
  }catch(e){$('report').textContent='ARRÊT DE SÉCURITÉ\n'+(e?.message||e);status('Aucune donnée modifiée : '+(e?.message||e),'error')}finally{busy=false;controls()}};
 $('backup').onclick=()=>{if(!saved||busy)return;try{
@@ -89,11 +89,11 @@ $('apply').onclick=async()=>{if(!saved||!backupDone||!$('confirmed').checked||bu
  const verify=await fetchCloud(saved.sb),check=verify.value_json.filter(c=>String(c?.id)===ID),gcheck=verify.value_json.filter(c=>String(c?.id)===GID);
  if(Number(verify.version)!==version||check.length!==1||!same(check[0],current.daymier)||gcheck.length!==1||!same(gcheck[0],current.gallay))throw Error('Contrôle après écriture incertain. La copie cloud doit être diagnostiquée avant toute nouvelle tentative.');
  const latestQueue=get(QUEUE)||{};if(sig(latestQueue)!==saved.queueSig)throw Error('Cloud réparé et vérifié, mais la file locale a changé : elle est conservée pour examen manuel.');
- const nextQueue={...latestQueue};delete nextQueue[KEY];localStorage.setItem(QUEUE,JSON.stringify(nextQueue));
+ const nextQueue={...latestQueue};\n // Ne jamais jeter la modification Gallay : isoler son changement dans le patch restant.\n const remainingChanges=saved.ticket.patch?.changes?.[GID];\n if(remainingChanges){nextQueue[KEY]={...saved.ticket,patch:{...saved.ticket.patch,changes:{[GID]:remainingChanges}}};}\n else{delete nextQueue[KEY];}\n localStorage.setItem(QUEUE,JSON.stringify(nextQueue));
  const latestMeta=get(META)||{};latestMeta[KEY]=version;localStorage.setItem(META,JSON.stringify(latestMeta));
  try{const h=await saved.sb.from('app_sync_history').insert({key_name:KEY,version,value_json:current.value,change_reason:'reconciliation-daymier-intervention-2026-11-16',updated_by:auth.data.user.id});if(h.error)console.warn('Historique non enregistré',h.error.message)}catch(e){console.warn(e)}
- $('report').textContent+='\n\nRÉSULTAT : version cloud '+version+' vérifiée. Gallay intacte. Entrée clients retirée de la file locale. Les autres files locales ont été conservées.';
- $('result').textContent='Réparation terminée et vérifiée. Fermez puis rouvrez l’application sur les deux téléphones, laissez la synchronisation se terminer, puis relancez les diagnostics.';$('result').className='ok';status('Réparation validée.','ok');reset();
+ $('report').textContent+='\n\nRÉSULTAT : version cloud '+version+' vérifiée. Gallay intacte. Changement Gallay conservé dans la file locale pour synchronisation ultérieure. Les autres files locales ont été conservées.';
+ $('result').textContent='Réparation Daymier terminée et vérifiée. Le changement Gallay reste en attente et ne sera pas perdu. Fermez puis rouvrez l’application sur les deux téléphones, puis relancez les diagnostics avant de synchroniser Gallay.';$('result').className='ok';status('Réparation validée.','ok');reset();
  }catch(e){$('result').textContent='ARRÊT : '+(e?.message||e)+' Si l’écriture cloud avait déjà été confirmée, ne relancez pas la procédure avant un nouveau diagnostic.';$('result').className='error';reset()}finally{busy=false;controls()}
 };
 controls();
