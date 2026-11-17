@@ -153,14 +153,17 @@ function init(){
  if(!panel||el("sync-readonly-button"))return;
  const holder=document.createElement("div");
  holder.className="sync-ro-holder";
- holder.innerHTML='<div class="sync-ro-actions">'+
- '<button type="button" class="secondary small" id="sync-readonly-button">🔎 Analyser les conflits (lecture seule)</button>'+
- '<a class="secondary small sync-ro-link" href="./diagnostic-interventions.html">📋 Diagnostic des interventions</a><a class="secondary small sync-ro-link" href="./diagnostic-sync.html">🔄 Diagnostic de synchronisation</a><a class="secondary small sync-ro-link" href="./analyse-daymier.html">🧩 Analyse ciblée Daymier</a>'+
- '</div><div id="sync-readonly-results" class="sync-ro-results" hidden></div>';
+ holder.innerHTML='<details class="sync-ro-menu">'+
+ '<summary>🔎 Analyse</summary>'+
+ '<div class="sync-ro-actions">'+
+ '<button type="button" class="secondary small" id="sync-readonly-button">Analyser les conflits (lecture seule)</button>'+
+ '<a class="secondary small sync-ro-link" href="./diagnostic-interventions.html">Diagnostic des interventions</a>'+
+ '<a class="secondary small sync-ro-link" href="./diagnostic-sync.html">Diagnostic de synchronisation</a>'+
+ '</div></details><div id="sync-readonly-results" class="sync-ro-results" hidden></div>';
  panel.appendChild(holder);
  el("sync-readonly-button")?.addEventListener("click",run);
  const st=document.createElement("style");
- st.textContent=".sync-ro-holder{margin-top:10px}.sync-ro-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.sync-ro-link{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;padding:8px 12px;border:1px solid #315d85;border-radius:8px;color:#eaf2ff;background:#092b4e;font:inherit;font-size:.85rem;cursor:pointer}.sync-ro-link:hover{background:#10416f}.sync-ro-results{margin-top:9px;padding:12px;border:1px solid #345478;border-radius:10px;background:#06192f;color:#ddecff;line-height:1.4;font-size:.88rem;overflow-wrap:anywhere}.sync-ro-results[hidden]{display:none}.sync-ro-keys,.sync-ro-rows{margin:9px 0;display:grid;gap:5px}.sync-ro-row{border:1px solid #315478;border-radius:7px;padding:8px}.sync-ro-row strong{display:block;margin-bottom:4px}";
+ st.textContent=".sync-ro-holder{margin-top:10px}.sync-ro-menu{position:relative;display:inline-block;max-width:100%}.sync-ro-menu>summary{list-style:none;display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border:1px solid #315d85;border-radius:9px;color:#eaf2ff;background:#092b4e;font:inherit;font-size:.9rem;font-weight:700;cursor:pointer}.sync-ro-menu>summary::-webkit-details-marker{display:none}.sync-ro-menu>summary:after{content:"▾";font-size:.8rem}.sync-ro-menu[open]>summary:after{content:"▴"}.sync-ro-actions{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap;padding:10px;margin-top:6px;border:1px solid #315d85;border-radius:9px;background:#061b34}.sync-ro-link{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;padding:8px 12px;border:1px solid #315d85;border-radius:8px;color:#eaf2ff;background:#092b4e;font:inherit;font-size:.85rem;cursor:pointer}.sync-ro-link:hover{background:#10416f}.sync-ro-results{margin-top:9px;padding:12px;border:1px solid #345478;border-radius:10px;background:#06192f;color:#ddecff;line-height:1.4;font-size:.88rem;overflow-wrap:anywhere}.sync-ro-results[hidden]{display:none}.sync-ro-keys,.sync-ro-rows{margin:9px 0;display:grid;gap:5px}.sync-ro-row{border:1px solid #315478;border-radius:7px;padding:8px}.sync-ro-row strong{display:block;margin-bottom:4px}";
  document.head.appendChild(st);
 }
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init,{once:true});else init();
