@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Préparation migration IndexedDB — Chabanal et fils</title>
+<style>
+:root{font-family:system-ui,Arial,sans-serif;color:#eaf2ff;background:#03162e}
+*{box-sizing:border-box}body{max-width:760px;margin:auto;padding:18px;line-height:1.5}
+section{background:#092847;border:1px solid #28577d;border-radius:12px;padding:15px;margin:14px 0}
+h1{font-size:1.4rem}h2{font-size:1.05rem;margin-top:0}
+p,small{color:#bfd0e5}button,a{display:inline-block;border:0;border-radius:8px;padding:11px 14px;background:#147ce0;color:#fff;text-decoration:none;font-weight:650;margin:5px 5px 5px 0}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#061b34;border-radius:8px;padding:12px}
+.ok{color:#8de7a6}.warn{color:#ffd184}.bad{color:#ff9b9b}.muted{color:#bfd0e5}
+</style>
+</head>
+<body>
+<h1>Préparation sécurisée — stockage clients</h1>
+<section>
+<strong class="warn">Diagnostic strictement en lecture seule</strong>
+<p>Cette page ne modifie ni localStorage, ni IndexedDB, ni Supabase. Elle n'active pas la migration. Elle contrôle uniquement la sauvegarde locale présente sur cet appareil et les capacités du navigateur.</p>
+<p>À lancer séparément sur chaque téléphone, depuis l'application installée ou son navigateur habituel. Ne pas effacer les données du navigateur et ne pas désinstaller l'application.</p>
+<button id="run">Effectuer le contrôle local</button>
+</section>
+<section><h2>Résultat du contrôle</h2><pre id="result">En attente du contrôle.</pre></section>
+<section>
+<h2>Avant toute activation</h2>
+<ul>
+<li>Les deux téléphones doivent être contrôlés séparément.</li>
+<li>Les sauvegardes locales doivent être valides et les compteurs cohérents avec le diagnostic de synchronisation.</li>
+<li>La file de synchronisation doit être vide et aucune modification ne doit être en attente.</li>
+<li>Une sauvegarde JSON indépendante doit être conservée pour chaque téléphone.</li>
+<li>Le nombre de clients et les versions locales/cloud doivent être comparés avant toute écriture IndexedDB.</li>
+</ul>
+<p class="warn">Si un contrôle échoue ou si les compteurs diffèrent, arrêter ici et ne lancer aucune migration.</p>
+</section>
+<p><a href="./diagnostic-sync.html">Ouvrir le diagnostic de synchronisation</a> <a href="./">Retour à l'application</a></p>
+<script>
+(()=>{'use strict';
+const KEY='metier_clients_v1_2_corrigee';
+const out=document.getElementById('result');
+const line=(s)=>{out.textContent+=s+'\\n'};
+document.getElementById('run').addEventListener('click',()=>{
+ out.textContent='';
+ try{
+  const supported=!!window.indexedDB;
+  line((supported?'OK':'ÉCHEC')+' — IndexedDB '+(supported?'disponible':'indisponible'));
+  let raw;
+  try{raw=localStorage.getItem(KEY)}catch(e){line('ÉCHEC — lecture localStorage impossible : '+e.message);return}
+  if(raw===null){line('ÉCHEC — sauvegarde clients locale introuvable ('+KEY+').');return}
+  line('OK — sauvegarde clients locale trouvée');
+  line('Taille JSON : '+(new Blob([raw]).size).toLocaleString('fr-FR')+' octets');
+  let clients;
+  try{clients=JSON.parse(raw)}catch(e){line('ÉCHEC — JSON illisible : '+e.message);return}
+  if(!Array.isArray(clients)){line('ÉCHEC — la sauvegarde ne contient pas une liste de clients.');return}
+  line('Nombre de fiches : '+clients.length);
+  const missing=clients.filter(c=>!c||typeof c!=='object'||c.id==null).length;
+  const ids=clients.filter(c=>c&&c.id!=null).map(c=>String(c.id));
+  const duplicates=ids.length-new Set(ids).size;
+  line((missing?'ÉCHEC':'OK')+' — fiches sans identifiant : '+missing);
+  line((duplicates?'ÉCHEC':'OK')+' — identifiants en doublon : '+duplicates);
+  if(navigator.storage&&navigator.storage.estimate){
+   navigator.storage.estimate().then(x=>{
+    line('Stockage navigateur estimé : '+(x.usage??'inconnu')+' / '+(x.quota??'inconnu')+' octets');
+    line('Contrôle terminé. Aucun changement effectué.');
+   }).catch(()=>line('Estimation du quota indisponible. Aucun changement effectué.'));
+  }else line('Estimation du quota non prise en charge. Aucun changement effectué.');
+ }catch(e){line('ÉCHEC — '+(e.stack||e.message))}
+});
+})();
+</script>
+</body>
+</html>
