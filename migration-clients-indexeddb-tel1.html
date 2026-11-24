@@ -122,6 +122,15 @@ async function check(){
   if(localOnly.length)throw Error(localOnly.length+' identifiants locaux sont absents du cloud. Arrêt : aucune donnée ne sera remplacée.');
   if(cloudOnly.length!==5)throw Error('Le nombre de fiches cloud absentes du téléphone n’est plus celui attendu (5).');
   for(const [id,n] of localCounts){if(cloudCounts.get(id)!==n)throw Error('Nombre d’occurrences différent pour un identifiant partagé. Arrêt.');}
+  const groups=xs=>{const m=new Map();for(const c of xs){const k=String(c.id??c.clientId??c.uuid??'');if(!m.has(k))m.set(k,[]);m.get(k).push(c)}return m};
+  const lg=groups(localVisible),cg=groups(cloudVisible);
+  const bag=xs=>{const m=new Map();for(const x of xs){const k=sig(x);m.set(k,(m.get(k)||0)+1)}return m};
+  let localInterventions=0,cloudInterventions=0;
+  for(const [id,locals] of lg){const remotes=cg.get(id);for(let i=0;i<locals.length;i++){
+   const li=arr(locals[i].interventions),ri=arr(remotes[i].interventions),lb=bag(li),rb=bag(ri);
+   for(const [k,n] of lb){if((rb.get(k)||0)<n)throw Error('Une intervention locale ne se retrouve pas dans le cloud pour un identifiant partagé. Arrêt.')}
+   localInterventions+=li.length;cloudInterventions+=ri.length;
+  }}
   const record=await getRecord();
   if(record)throw Error('Un snapshot IndexedDB existe déjà (source : '+(record.source||'non précisée')+'). Il n’a pas été remplacé. Diagnostic nécessaire.');
   let estimate='non disponible';
@@ -136,6 +145,8 @@ async function check(){
    'Doublons connus conservés et appariés au cloud : '+duplicates,
    'File clients locale : vide',
    'Liste des suppressions : identique',
+   'Interventions locales vérifiées présentes dans le cloud : '+localInterventions,
+   'Interventions des fiches communes dans le cloud : '+cloudInterventions,
    'IndexedDB : emplacement clients vide',
    'Version cloud : '+cloud.clients.version,
    'Estimation stockage navigateur : '+estimate,
