@@ -12,6 +12,7 @@
   const RECORD_ID = "clients";
   const LEGACY_KEY = "metier_clients_v1_2_corrigee";
   let dbPromise;
+  let loadPromise;
   let writeChain = Promise.resolve();
 
   function openDB() {
@@ -77,31 +78,41 @@
     return value;
   }
 
-  async function load() {
-    const record = await readRecord();
-    if (record && Array.isArray(record.value)) {
-      validateClients(record.value);
-      return { clients: record.value, source: "indexeddb", migrated: false };
-    }
+  function load() {
+    // Une seule migration initiale à la fois, même si plusieurs modules/pages
+    // demandent le chargement simultanément.
+    if (loadPromise) return loadPromise;
+    loadPromise = (async () => {
+      const record = await readRecord();
+      if (record && Array.isArray(record.value)) {
+        validateClients(record.value);
+        return { clients: record.value, source: "indexeddb", migrated: false };
+      }
 
-    // Migration initiale non destructive : lire le localStorage, écrire IndexedDB,
-    // puis relire et comparer avant de déclarer la migration réussie.
-    const raw = localStorage.getItem(LEGACY_KEY);
-    if (raw === null) {
-      return { clients: null, source: "empty", migrated: false };
-    }
-    let legacy;
-    try { legacy = JSON.parse(raw); }
-    catch (_) { throw new Error("La sauvegarde locale des clients est illisible ; aucune donnée n'a été modifiée."); }
-    validateClients(legacy);
-    await writeRecord(legacy, "migration-localstorage");
-    const verified = await readRecord();
-    if (!verified || !Array.isArray(verified.value) ||
-        verified.value.length !== legacy.length ||
-        JSON.stringify(verified.value) !== JSON.stringify(legacy)) {
-      throw new Error("La vérification après migration a échoué ; la copie locale d'origine est conservée.");
-    }
-    return { clients: verified.value, source: "localstorage-migrated", migrated: true };
+      // Migration initiale non destructive : lire localStorage, écrire IndexedDB,
+      // puis relire et comparer. La copie historique reste intacte.
+      const raw = localStorage.getItem(LEGACY_KEY);
+      if (raw === null) {
+        return { clients: null, source: "empty", migrated: false };
+      }
+      let legacy;
+      try { legacy = JSON.parse(raw); }
+      catch (_) { throw new Error("La sauvegarde locale des clients est illisible ; aucune donnée n'a été modifiée."); }
+      validateClients(legacy);
+      await writeChain;
+      await writeRecord(legacy, "migration-localstorage");
+      const verified = await readRecord();
+      if (!verified || !Array.isArray(verified.value) ||
+          verified.value.length !== legacy.length ||
+          JSON.stringify(verified.value) !== JSON.stringify(legacy)) {
+        throw new Error("La vérification après migration a échoué ; la copie locale d'origine est conservée.");
+      }
+      return { clients: verified.value, source: "localstorage-migrated", migrated: true };
+    })().catch(error => {
+      loadPromise = null;
+      throw error;
+    });
+    return loadPromise;
   }
 
   function save(clients) {
