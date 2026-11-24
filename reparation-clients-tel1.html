@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Remise à niveau téléphone 1 — Chabanal et fils</title><meta name="robots" content="noindex,nofollow"><style>
+:root{font-family:system-ui,Arial,sans-serif;background:#03162e;color:#eaf2ff}*{box-sizing:border-box}body{max-width:850px;margin:auto;padding:16px;line-height:1.5}section{background:#092b4e;border:1px solid #21547f;border-radius:12px;padding:15px;margin:14px 0}button,a.btn{display:inline-block;background:#1878dd;border:0;border-radius:9px;padding:11px 15px;color:white;font-weight:650;text-decoration:none;margin:4px}button:disabled{opacity:.45}.fix{background:#18794e}.muted,small{color:#bfd0e5}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:.84rem ui-monospace,monospace;background:#04182e;padding:11px;border-radius:8px}label{display:flex;gap:10px;align-items:flex-start;margin:14px 0}input{width:21px;height:21px;flex-shrink:0}.ok{color:#8de5a9}.warn{color:#ffd184}.bad{color:#ff9f9f}
+</style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script></head><body>
+<h1>Remise à niveau des fiches — téléphone 1</h1>
+<p class="muted"><strong>À ouvrir uniquement sur le téléphone 1.</strong> Le téléphone 2 est la référence et ne doit pas être modifié. Cette opération ne modifie jamais Supabase : elle remplace uniquement la liste locale des fiches clients du téléphone 1 avec la copie cloud après contrôles stricts.</p>
+<section><h2>1. Vérification préalable — sans écriture</h2><button id="check">Vérifier les conditions</button><p id="status">Aucune action effectuée.</p><pre id="report">—</pre></section>
+<section><h2>2. Sauvegarde obligatoire</h2><button id="backup" disabled>Télécharger la sauvegarde complète</button><label><input id="saved" type="checkbox" disabled>J'ai vérifié que le fichier JSON est présent dans les téléchargements de ce téléphone.</label></section>
+<section><h2>3. Remise à niveau locale</h2><p>La liste clients du téléphone 1 sera remplacée par la liste clients cloud (757 fiches visibles). Les interventions seront celles du cloud, qui contient déjà toutes les interventions locales identifiées. Les autres clés locales, équipements, numéros de série, photos et documents séparés, ainsi que le cloud et le téléphone 2, ne seront pas modifiés.</p><button id="apply" class="fix" disabled>Mettre à jour les fiches du téléphone 1</button><p id="result"></p></section>
+<p class="muted"><small>Si un contrôle échoue, aucune modification n'est faite. Ne relancez pas une réparation après un résultat incertain : transmettez le rapport.</small></p><p><a class="btn" href="./diagnostic-clients.html">Retour au diagnostic clients</a><a class="btn" href="./">Application</a></p>
+<script>
+(()=>{'use strict';
+const CLIENT='metier_clients_v1_2_corrigee',DEL='metier_clients_deleted_v1',META='chabanal_v2_cloud_meta',QUEUE='chabanal_v2_sync_queue',CFG='chabanal_v2_cloud_config';
+const allowed=new Set(['addressComplement','contractType','email','isNew','maintenanceMonth','phone']);
+const $=id=>document.getElementById(id),read=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch{return null}};
+const arr=x=>Array.isArray(x)?x:[],stable=x=>Array.isArray(x)?x.map(stable):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x,sig=x=>JSON.stringify(stable(x));
+const id=c=>String(c?.id??c?.clientId??c?.uuid??''),name=c=>String(c?.name??c?.nom??'Client sans nom');
+const fields=(a,b)=>[...new Set([...Object.keys(a||{}),...Object.keys(b||{})])].filter(k=>sig(a?.[k]??null)!==sig(b?.[k]??null));
+const interventions=c=>arr(c?.interventions);
+const visible=(xs,ds)=>{const gone=new Set(arr(ds).map(String));return arr(xs).filter(c=>c&&!gone.has(id(c)))};
+let preview=null,busy=false,backupOK=false;
+function status(s,cls){$('status').textContent=s;$('status').className=cls||''}
+function controls(){$('check').disabled=busy;$('backup').disabled=busy||!preview;$('saved').disabled=busy||!preview||!backupOK;$('apply').disabled=busy||!preview||!backupOK||!$('saved').checked}
+function reset(){preview=null;backupOK=false;$('saved').checked=false;controls()}
+async function connect(){const c=read(CFG);if(!c?.url||!c?.key||!window.supabase)throw Error('Configuration Supabase indisponible sur cet appareil.');const sb=window.supabase.createClient(c.url,c.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storage:localStorage}});const s=await sb.auth.getSession();if(s.error)throw s.error;if(!s.data.session)throw Error('Session Supabase absente. Ouvrez l’application et reconnectez-vous.');return sb}
+async function cloud(sb){const [c,d]=await Promise.all([sb.from('app_sync_state').select('value_json,version').eq('key_name',CLIENT).maybeSingle(),sb.from('app_sync_state').select('value_json').eq('key_name',DEL).maybeSingle()]);if(c.error)throw c.error;if(d.error)throw d.error;if(!c.data||!Array.isArray(c.data.value_json))throw Error('Liste clients cloud absente ou invalide.');return {clients:c.data,deleted:d.data?.value_json??[]}}
+function countById(xs){const m=new Map();for(const c of xs){const k=id(c);if(!k)throw Error('Une fiche ne possède pas d’identifiant reconnu.');m.set(k,(m.get(k)||0)+1)}return m}
+function interventionBag(xs){const m=new Map();for(const x of xs){const k=sig(x);m.set(k,(m.get(k)||0)+1)}return m}
+function validate(local,localDeleted,queue,remote,remoteDeleted,version){
+ if(!Array.isArray(local)||!Array.isArray(remote))throw Error('Liste locale ou cloud invalide.');
+ if(sig(arr(localDeleted).map(String).sort())!==sig(arr(remoteDeleted).map(String).sort()))throw Error('Les listes de suppressions locales et cloud diffèrent. Réparation suspendue.');
+ if(queue?.[CLIENT])throw Error('Une file clients est en attente. Réparation suspendue pour ne pas perdre une modification.');
+ const l=visible(local,localDeleted),r=visible(remote,remoteDeleted),lm=countById(l),rm=countById(r);
+ const localOnly=[...lm.keys()].filter(k=>!rm.has(k)),cloudOnly=[...rm.keys()].filter(k=>!lm.has(k));
+ if(localOnly.length)throw Error('Des fiches présentes uniquement en local ont été détectées : '+localOnly.length+'. Aucune donnée ne sera remplacée.');
+ if(cloudOnly.length!==5||l.length!==752||r.length!==757)throw Error('Les compteurs ne correspondent plus au diagnostic attendu (752 local, 757 cloud, 5 cloud uniquement).');
+ for(const [key,n] of lm){if(rm.get(key)!==n)throw Error('Nombre d’occurrences différent pour l’identifiant '+key+'.');}
+ const lGroups=new Map(),rGroups=new Map();for(const c of l){const k=id(c);if(!lGroups.has(k))lGroups.set(k,[]);lGroups.get(k).push(c)}for(const c of r){const k=id(c);if(!rGroups.has(k))rGroups.set(k,[]);rGroups.get(k).push(c)}
+ let changed=0,interLocal=0,interCloud=0;
+ for(const [key,lg] of lGroups){
+  const rg=rGroups.get(key);
+  if(lg.length>1){
+   const strip=x=>{const y={...x};delete y.interventions;return y};
+   const ls=lg.map(strip).map(sig).sort(),rs=rg.map(strip).map(sig).sort();
+   if(sig(ls)!==sig(rs))throw Error('Les fiches en doublon '+name(lg[0])+' ont des contenus différents. Vérification manuelle nécessaire.');
+  }
+  // Les fiches portant le même ID sont appariées par ordre d’apparition.
+  for(let i=0;i<lg.length;i++){
+   const a=lg[i],b=rg[i],diff=fields(a,b).filter(k=>k!=='interventions');
+   const unexpected=diff.filter(k=>!allowed.has(k));
+   if(unexpected.length)throw Error('Différence non prévue sur '+name(a)+' : '+unexpected.join(', ')+'. Aucune écriture.');
+   if(diff.length)changed++;
+   const lb=interventionBag(interventions(a)),rb=interventionBag(interventions(b));
+   for(const [k,n] of lb)if((rb.get(k)||0)<n)throw Error('Une intervention locale ne se retrouve pas dans le cloud pour '+name(a)+'. Aucune écriture.');
+   interLocal+=interventions(a).length;interCloud+=interventions(b).length;
+  }
+ }
+ const dup=[...lm.values()].filter(n=>n>1).length;
+ return {localVisible:l.length,cloudVisible:r.length,cloudOnly:cloudOnly.length,changed,dup,interLocal,interCloud,version:Number(version),cloudRawCount:remote.length};
+}
+$('saved').onchange=controls;
+$('check').onclick=async()=>{reset();busy=true;controls();status('Comparaison approfondie en lecture seule…');$('report').textContent='—';try{
+ const local=read(CLIENT),deleted=read(DEL),meta=read(META)||{},queue=read(QUEUE)||{},sb=await connect(),remote=await cloud(sb);
+ const v=validate(local,deleted,queue,remote.clients.value_json,remote.deleted,remote.clients.version);
+ preview={local,deleted,meta,queue,remote,sb,v,localSig:sig(local),deletedSig:sig(deleted),metaSig:sig(meta),queueSig:sig(queue),remoteSig:sig(remote.clients.value_json),remoteDelSig:sig(remote.deleted)};
+ $('report').textContent=['CONTRÔLE RÉUSSI — AUCUNE ÉCRITURE','Fiches visibles : '+v.localVisible+' local / '+v.cloudVisible+' cloud','Fiches absentes du téléphone : '+v.cloudOnly,'Fiches communes avec différences autorisées : '+v.changed,'Doublons conservés : '+v.dup,'Interventions : '+v.interLocal+' local / '+v.interCloud+' cloud','Version cloud : '+v.version,'Liste des suppressions : identique','File clients : vide','Autres files : '+(Object.keys(queue).filter(k=>k!==CLIENT).join(', ')||'aucune'),'Écriture prévue : remplacement de la seule clé locale '+CLIENT,'Aucune écriture cloud.'].join('\n');
+ status('Contrôles réussis. Téléchargez la sauvegarde avant de continuer.','ok');
+ }catch(e){$('report').textContent='ARRÊT DE SÉCURITÉ\n'+(e?.message||e);status('Aucune donnée modifiée : '+(e?.message||e),'bad')}finally{busy=false;controls()}};
+$('backup').onclick=()=>{if(!preview||busy)return;try{
+ const pack={label:'Sauvegarde complète avant remise à niveau téléphone 1',createdAt:new Date().toISOString(),device:'Téléphone 1',local:{clients:preview.local,deletedClientIds:preview.deleted,meta:preview.meta,queue:preview.queue},cloud:{clients:preview.remote.clients.value_json,deletedClientIds:preview.remote.deleted,clientsVersion:preview.remote.clients.version}};
+ const blob=new Blob([JSON.stringify(pack)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='sauvegarde_chabanal_tel1_avant_remise_a_niveau_'+new Date().toISOString().slice(0,10)+'.json';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);backupOK=true;controls();status('Téléchargement demandé. Vérifiez le fichier dans Téléchargements avant de cocher la case.','warn');
+ }catch(e){status('Sauvegarde impossible : '+(e?.message||e),'bad')}};
+$('apply').onclick=async()=>{if(!preview||!backupOK||!$('saved').checked||busy)return;if(!confirm('Confirmer le remplacement de la seule liste clients locale du téléphone 1 par la copie cloud vérifiée ? Le cloud et le téléphone 2 ne seront pas modifiés.'))return;
+ busy=true;controls();$('result').textContent='Dernière vérification…';try{
+ if(sig(read(CLIENT))!==preview.localSig||sig(read(DEL))!==preview.deletedSig||sig(read(META)||{})!==preview.metaSig||sig(read(QUEUE)||{})!==preview.queueSig)throw Error('Les données locales ont changé depuis la sauvegarde. Recommencez le contrôle.');
+ const fresh=await cloud(preview.sb);if(Number(fresh.clients.version)!==preview.v.version||sig(fresh.clients.value_json)!==preview.remoteSig||sig(fresh.deleted)!==preview.remoteDelSig)throw Error('Le cloud a changé depuis le contrôle. Aucune écriture locale.');
+ validate(read(CLIENT),read(DEL),read(QUEUE)||{},fresh.clients.value_json,fresh.deleted,fresh.clients.version);
+ const oldClient=localStorage.getItem(CLIENT),oldMeta=localStorage.getItem(META);
+ try{
+  localStorage.setItem(CLIENT,JSON.stringify(fresh.clients.value_json));
+  const nextMeta=read(META)||{};nextMeta[CLIENT]=Number(fresh.clients.version);localStorage.setItem(META,JSON.stringify(nextMeta));
+  if(sig(read(CLIENT))!==sig(fresh.clients.value_json)||Number((read(META)||{})[CLIENT])!==Number(fresh.clients.version))throw Error('Vérification après écriture locale échouée.');
+ }catch(writeError){if(oldClient===null)localStorage.removeItem(CLIENT);else localStorage.setItem(CLIENT,oldClient);if(oldMeta===null)localStorage.removeItem(META);else localStorage.setItem(META,oldMeta);throw writeError}
+ $('report').textContent+='\n\nRÉSULTAT : liste clients locale remplacée et relue avec succès. Version locale connue mise à '+fresh.clients.version+'. Le cloud, le téléphone 2, la file locale, les suppressions et les autres clés de stockage sont inchangés.';
+ $('result').textContent='Remise à niveau locale terminée et vérifiée. Fermez complètement puis rouvrez l’application sur le téléphone 1. Relancez ensuite les diagnostics clients et interventions.';$('result').className='ok';status('Réparation locale confirmée.','ok');preview=null;backupOK=false;
+ }catch(e){$('result').textContent='ARRÊT : '+(e?.message||e)+' Ne relancez pas avant un nouveau diagnostic.';$('result').className='bad'}finally{busy=false;controls()}
+};
+controls();
+})();
+</script></body></html>
