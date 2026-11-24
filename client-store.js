@@ -85,7 +85,10 @@
     if (loadPromise) return loadPromise;
     const pending = (async () => {
       const record = await readRecord();
-      if (record && Array.isArray(record.value)) {
+      if (record) {
+        if (!Array.isArray(record.value)) {
+          throw new Error("Le snapshot IndexedDB existe mais est invalide ; aucune donnée ne sera remplacée.");
+        }
         validateClients(record.value);
         return { clients: record.value, source: "indexeddb", migrated: false };
       }
@@ -96,6 +99,15 @@
       // une sauvegarde locale ou une copie cloud arrivée entre-temps.
       const raw = localStorage.getItem(LEGACY_KEY);
       if (raw === null) {
+        await writeChain;
+        const latest = await readRecord();
+        if (latest) {
+          if (!Array.isArray(latest.value)) {
+            throw new Error("Le snapshot IndexedDB existe mais est invalide ; aucune donnée ne sera remplacée.");
+          }
+          validateClients(latest.value);
+          return { clients: latest.value, source: latest.source || "indexeddb", migrated: false };
+        }
         return { clients: null, source: "empty", migrated: false };
       }
       let legacy;
@@ -105,7 +117,10 @@
 
       const verified = await enqueueWrite(async () => {
         const latest = await readRecord();
-        if (latest && Array.isArray(latest.value)) {
+        if (latest) {
+          if (!Array.isArray(latest.value)) {
+            throw new Error("Le snapshot IndexedDB existe mais est invalide ; aucune donnée ne sera remplacée.");
+          }
           validateClients(latest.value);
           return latest;
         }
@@ -144,16 +159,14 @@
 
   function save(clients) {
     const snapshot = JSON.parse(JSON.stringify(validateClients(clients)));
-    const operation = writeChain.then(() => writeRecord(snapshot, "application"));
-    writeChain = operation.catch(() => {});
-    return operation;
+    return enqueueWrite(() => writeRecord(snapshot, "application"));
   }
 
   function replaceFromCloud(clients) {
     const snapshot = JSON.parse(JSON.stringify(validateClients(clients)));
     // Sérialiser le remplacement cloud avec les sauvegardes locales. Sans cela,
     // une sauvegarde lancée pendant l'attente pourrait écraser la copie cloud.
-    const operation = writeChain.then(async () => {
+    return enqueueWrite(async () => {
       const result = await writeRecord(snapshot, "supabase");
       const verified = await readRecord();
       if (!verified || JSON.stringify(verified.value) !== JSON.stringify(snapshot)) {
@@ -161,17 +174,17 @@
       }
       return result;
     });
-    writeChain = operation.catch(() => {});
-    return operation;
   }
 
   async function exportLegacyCopy() {
+    await writeChain;
     const record = await readRecord();
     if (!record) return null;
     return JSON.stringify(record.value);
   }
 
   async function status() {
+    await writeChain;
     const record = await readRecord();
     return record ? {
       ready: true,
