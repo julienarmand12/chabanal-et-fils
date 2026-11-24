@@ -103,7 +103,8 @@ async function check(){
   const missing=local.filter(c=>!c||typeof c!=='object'||c.id==null).length;
   if(missing)throw Error('Fiches locales sans identifiant : '+missing+'. Arrêt.');
   const ids=local.map(c=>String(c.id)),duplicates=ids.length-new Set(ids).size;
-  if(duplicates)throw Error('Identifiants locaux en doublon : '+duplicates+'. Arrêt pour ne pas propager une anomalie.');
+  // Le doublon Girodet est connu et doit être conservé ; on vérifie les occurrences contre le cloud.
+  if(duplicates!==1)throw Error('Nombre de doublons locaux inattendu : '+duplicates+'. Le diagnostic connu en comporte exactement un (Girodet).');
   const deleted=read(DEL),queue=read(QUEUE)||{};
   if(!Array.isArray(deleted))throw Error('Liste locale des suppressions invalide.');
   if(queue[CLIENT])throw Error('Une file clients est en attente. Arrêt.');
@@ -114,12 +115,13 @@ async function check(){
   if(sig(arr(deleted).map(String).sort())!==sig(arr(cloud.deleted).map(String).sort()))throw Error('Les listes de suppressions locales et cloud diffèrent. Arrêt.');
   const localVisible=visible(local,deleted),cloudVisible=visible(remote,cloud.deleted);
   if(localVisible.length!==752||cloudVisible.length!==757)throw Error('Compteurs inattendus : '+localVisible.length+' local / '+cloudVisible.length+' cloud. Attendu : 752 / 757.');
-  const localIds=new Set(localVisible.map(c=>String(c.id??c.clientId??c.uuid??'')));
-  const cloudIds=new Set(cloudVisible.map(c=>String(c.id??c.clientId??c.uuid??'')));
-  const localOnly=[...localIds].filter(x=>!cloudIds.has(x));
-  const cloudOnly=[...cloudIds].filter(x=>!localIds.has(x));
-  if(localOnly.length)throw Error(localOnly.length+' fiches locales absentes du cloud. Arrêt : aucune donnée ne sera remplacée.');
+  const counts=xs=>{const m=new Map();for(const c of xs){const k=String(c.id??c.clientId??c.uuid??'');m.set(k,(m.get(k)||0)+1)}return m};
+  const localCounts=counts(localVisible),cloudCounts=counts(cloudVisible);
+  const localOnly=[...localCounts.keys()].filter(x=>!cloudCounts.has(x));
+  const cloudOnly=[...cloudCounts.keys()].filter(x=>!localCounts.has(x));
+  if(localOnly.length)throw Error(localOnly.length+' identifiants locaux sont absents du cloud. Arrêt : aucune donnée ne sera remplacée.');
   if(cloudOnly.length!==5)throw Error('Le nombre de fiches cloud absentes du téléphone n’est plus celui attendu (5).');
+  for(const [id,n] of localCounts){if(cloudCounts.get(id)!==n)throw Error('Nombre d’occurrences différent pour un identifiant partagé. Arrêt.');}
   const record=await getRecord();
   if(record)throw Error('Un snapshot IndexedDB existe déjà (source : '+(record.source||'non précisée')+'). Il n’a pas été remplacé. Diagnostic nécessaire.');
   let estimate='non disponible';
@@ -130,7 +132,8 @@ async function check(){
    'Fiches locales conservées : '+local.length+' (752 visibles)',
    'Fiches cloud à copier : '+remote.length+' (757 visibles)',
    'Fiches cloud absentes du téléphone : 5',
-   'Identifiants locaux manquants / doublons : 0 / 0',
+   'Fiches sans identifiant : 0',
+   'Doublons connus conservés et appariés au cloud : '+duplicates,
    'File clients locale : vide',
    'Liste des suppressions : identique',
    'IndexedDB : emplacement clients vide',
