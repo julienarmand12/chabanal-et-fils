@@ -15,11 +15,12 @@ h1{font-size:1.45rem}button{padding:10px 14px;border:0;border-radius:8px;backgro
 <p class="note"><strong>Page de test uniquement.</strong> Elle utilise une base IndexedDB dédiée au module et une clé localStorage de test. Elle ne lit ni ne modifie les fiches clients réelles, Supabase, les équipements ou les données de production.</p>
 <button id="run">Lancer les tests</button>
 <pre id="log">En attente…</pre>
+<script src="./client-store.js" data-test-mode="true"></script>
 <script>
 (async function(){
  const DB="chabanal_clients_db_test", KEY="metier_clients_test_v1";
  const log=document.getElementById("log"),button=document.getElementById("run");
- function line(s){log.textContent+=s+"\\n"}
+ function line(s){log.textContent+=s+"\n"}
  function assert(ok,msg){if(!ok)throw new Error("ÉCHEC : "+msg);line("OK : "+msg)}
  function resetDB(){return new Promise((resolve,reject)=>{const r=indexedDB.deleteDatabase(DB);r.onsuccess=resolve;r.onerror=()=>reject(r.error);r.onblocked=()=>reject(new Error("Suppression de la base de test bloquée."))})}
  button.addEventListener("click",async()=>{
@@ -42,12 +43,12 @@ h1{font-size:1.45rem}button{padding:10px 14px;border:0;border-radius:8px;backgro
    assert(exported.length===1&&exported[0].id==="cloud-1","export de secours cohérent");
    let rejected=false;try{await ChabanalClientStore.save([{name:"Sans identifiant"}])}catch(e){rejected=true}
    assert(rejected,"refus d'une fiche sans identifiant");
-   line("\\nTous les tests automatisés sont réussis.");
-  }catch(e){line("\\n"+(e.stack||e.message));}
+   line("\nTous les tests automatisés sont réussis.");
+  }catch(e){line("\n"+(e.stack||e.message));}
   finally{button.disabled=false}
  });
 })();
 </script>
-<script src="./client-store.js" data-test-mode="true"></script>
+
 </body>
 </html>
