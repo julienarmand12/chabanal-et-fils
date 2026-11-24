@@ -39,6 +39,8 @@ h1{font-size:1.45rem}button{padding:10px 14px;border:0;border-radius:8px;backgro
    await Promise.all([ChabanalClientStore.save(changed),ChabanalClientStore.replaceFromCloud(cloud)]);
    const after=await ChabanalClientStore.load();
    assert(after.clients.length===1&&after.clients[0].id==="cloud-1","remplacement cloud prioritaire et vérifié");
+   const reloaded=await ChabanalClientStore.load();
+   assert(reloaded.clients.length===1&&reloaded.clients[0].id==="cloud-1","nouveau chargement relit le dernier snapshot IndexedDB");
    const exported=JSON.parse(await ChabanalClientStore.exportLegacyCopy());
    assert(exported.length===1&&exported[0].id==="cloud-1","export de secours cohérent");
    let rejected=false;try{await ChabanalClientStore.save([{name:"Sans identifiant"}])}catch(e){rejected=true}
