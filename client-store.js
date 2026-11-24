@@ -80,18 +80,20 @@
   }
 
   function load() {
-    // Une seule migration initiale à la fois, même si plusieurs modules/pages
-    // demandent le chargement simultanément.
+    // Mutualiser uniquement les chargements simultanés. Une fois terminé,
+    // le prochain appel relit IndexedDB pour ne jamais servir un ancien snapshot.
     if (loadPromise) return loadPromise;
-    loadPromise = (async () => {
+    const pending = (async () => {
       const record = await readRecord();
       if (record && Array.isArray(record.value)) {
         validateClients(record.value);
         return { clients: record.value, source: "indexeddb", migrated: false };
       }
 
-      // Migration initiale non destructive : lire localStorage, écrire IndexedDB,
-      // puis relire et comparer. La copie historique reste intacte.
+      // Migration initiale non destructive : lire localStorage, puis réserver
+      // l'écriture dans la même file que save() et replaceFromCloud().
+      // Le contrôle dans la file empêche une migration tardive d'écraser
+      // une sauvegarde locale ou une copie cloud arrivée entre-temps.
       const raw = localStorage.getItem(LEGACY_KEY);
       if (raw === null) {
         return { clients: null, source: "empty", migrated: false };
@@ -100,20 +102,44 @@
       try { legacy = JSON.parse(raw); }
       catch (_) { throw new Error("La sauvegarde locale des clients est illisible ; aucune donnée n'a été modifiée."); }
       validateClients(legacy);
-      await writeChain;
-      await writeRecord(legacy, "migration-localstorage");
-      const verified = await readRecord();
+
+      const verified = await enqueueWrite(async () => {
+        const latest = await readRecord();
+        if (latest && Array.isArray(latest.value)) {
+          validateClients(latest.value);
+          return latest;
+        }
+        await writeRecord(legacy, "migration-localstorage");
+        return readRecord();
+      });
+
       if (!verified || !Array.isArray(verified.value) ||
           verified.value.length !== legacy.length ||
           JSON.stringify(verified.value) !== JSON.stringify(legacy)) {
-        throw new Error("La vérification après migration a échoué ; la copie locale d'origine est conservée.");
+        // Si une écriture concurrente légitime a gagné la file, elle devient
+        // la source de vérité : ne pas la considérer comme un échec de migration.
+        const latest = await readRecord();
+        if (!latest || !Array.isArray(latest.value)) {
+          throw new Error("La vérification après migration a échoué ; la copie locale d'origine est conservée.");
+        }
+        validateClients(latest.value);
+        return { clients: latest.value, source: latest.source || "indexeddb", migrated: false };
       }
       return { clients: verified.value, source: "localstorage-migrated", migrated: true };
-    })().catch(error => {
-      loadPromise = null;
-      throw error;
-    });
-    return loadPromise;
+    })();
+
+    loadPromise = pending;
+    pending.then(
+      () => { if (loadPromise === pending) loadPromise = null; },
+      () => { if (loadPromise === pending) loadPromise = null; }
+    );
+    return pending;
+  }
+
+  function enqueueWrite(task) {
+    const operation = writeChain.then(task);
+    writeChain = operation.catch(() => {});
+    return operation;
   }
 
   function save(clients) {
