@@ -17,7 +17,7 @@ h1{font-size:1.45rem}button{padding:10px 14px;border:0;border-radius:8px;backgro
 <pre id="log">En attente…</pre>
 <script>
 (async function(){
- const DB="chabanal_clients_db", KEY="metier_clients_v1_2_corrigee";
+ const DB="chabanal_clients_db_test", KEY="metier_clients_test_v1";
  const log=document.getElementById("log"),button=document.getElementById("run");
  function line(s){log.textContent+=s+"\\n"}
  function assert(ok,msg){if(!ok)throw new Error("ÉCHEC : "+msg);line("OK : "+msg)}
@@ -48,6 +48,6 @@ h1{font-size:1.45rem}button{padding:10px 14px;border:0;border-radius:8px;backgro
  });
 })();
 </script>
-<script src="./client-store.js"></script>
+<script src="./client-store.js" data-test-mode="true"></script>
 </body>
 </html>
