@@ -158,6 +158,7 @@ function init(){
  '<div class="sync-ro-actions">'+
  '<button type="button" class="secondary small" id="sync-readonly-button">Analyser les conflits (lecture seule)</button>'+
  '<a class="secondary small sync-ro-link" href="./diagnostic-interventions.html">Diagnostic des interventions</a>'+
+ '<a class="secondary small sync-ro-link" href="./diagnostic-clients.html">Diagnostic des fiches clients</a>'+
  '<a class="secondary small sync-ro-link" href="./diagnostic-sync.html">Diagnostic de synchronisation</a>'+
  '</div></details><div id="sync-readonly-results" class="sync-ro-results" hidden></div>';
  panel.appendChild(holder);
