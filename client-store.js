@@ -6,11 +6,12 @@
 (function () {
   "use strict";
 
-  const DB_NAME = "chabanal_clients_db";
+  const TEST_MODE = document.currentScript?.dataset?.testMode === "true";
+  const DB_NAME = TEST_MODE ? "chabanal_clients_db_test" : "chabanal_clients_db";
   const DB_VERSION = 1;
   const STORE = "snapshots";
   const RECORD_ID = "clients";
-  const LEGACY_KEY = "metier_clients_v1_2_corrigee";
+  const LEGACY_KEY = TEST_MODE ? "metier_clients_test_v1" : "metier_clients_v1_2_corrigee";
   let dbPromise;
   let loadPromise;
   let writeChain = Promise.resolve();
