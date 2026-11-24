@@ -77,10 +77,19 @@ $('apply').onclick=async()=>{if(!preview||!backupOK||!$('saved').checked||busy)r
  validate(read(CLIENT),read(DEL),read(QUEUE)||{},fresh.clients.value_json,fresh.deleted,fresh.clients.version);
  const oldClient=localStorage.getItem(CLIENT),oldMeta=localStorage.getItem(META);
  try{
+  // Remplacement en deux temps : libère d'abord l'ancien bloc pour éviter le dépassement de quota lors d'une valeur plus volumineuse.
+  // L'ancien JSON reste en mémoire dans oldClient et peut être restauré si une étape échoue.
+  localStorage.removeItem(CLIENT);
   localStorage.setItem(CLIENT,JSON.stringify(fresh.clients.value_json));
   const nextMeta=read(META)||{};nextMeta[CLIENT]=Number(fresh.clients.version);localStorage.setItem(META,JSON.stringify(nextMeta));
   if(sig(read(CLIENT))!==sig(fresh.clients.value_json)||Number((read(META)||{})[CLIENT])!==Number(fresh.clients.version))throw Error('Vérification après écriture locale échouée.');
- }catch(writeError){if(oldClient===null)localStorage.removeItem(CLIENT);else localStorage.setItem(CLIENT,oldClient);if(oldMeta===null)localStorage.removeItem(META);else localStorage.setItem(META,oldMeta);throw writeError}
+ }catch(writeError){
+  // Restauration de la valeur d'origine ; sa taille était déjà acceptée avant l'opération.
+  localStorage.removeItem(CLIENT);
+  if(oldClient!==null)localStorage.setItem(CLIENT,oldClient);
+  if(oldMeta===null)localStorage.removeItem(META);else localStorage.setItem(META,oldMeta);
+  throw writeError
+ }
  $('report').textContent+='\n\nRÉSULTAT : liste clients locale remplacée et relue avec succès. Version locale connue mise à '+fresh.clients.version+'. Le cloud, le téléphone 2, la file locale, les suppressions et les autres clés de stockage sont inchangés.';
  $('result').textContent='Remise à niveau locale terminée et vérifiée. Fermez complètement puis rouvrez l’application sur le téléphone 1. Relancez ensuite les diagnostics clients et interventions.';$('result').className='ok';status('Réparation locale confirmée.','ok');preview=null;backupOK=false;
  }catch(e){$('result').textContent='ARRÊT : '+(e?.message||e)+' Ne relancez pas avant un nouveau diagnostic.';$('result').className='bad'}finally{busy=false;controls()}
