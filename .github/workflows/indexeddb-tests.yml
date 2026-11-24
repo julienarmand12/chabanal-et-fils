@@ -1,0 +1,58 @@
+name: IndexedDB isolated browser tests
+
+on:
+  push:
+    branches:
+      - indexeddb-clients-migration
+    paths:
+      - "client-store.js"
+      - "client-store-test.html"
+      - ".github/workflows/indexeddb-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  indexeddb-browser-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout migration branch
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright
+        run: npm install --no-save playwright
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run isolated IndexedDB test page
+        run: |
+          cat > run-indexeddb-tests.cjs <<'EOF'
+          const { chromium } = require('playwright');
+          const path = require('node:path');
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const page = await browser.newPage();
+            const errors = [];
+            page.on('pageerror', error => errors.push(error.message));
+            await page.goto('file://' + path.resolve('client-store-test.html'));
+            await page.locator('#run').click();
+            await page.waitForFunction(
+              () => document.querySelector('#log').textContent.includes('Tous les tests automatisés sont réussis.')
+                || document.querySelector('#log').textContent.includes('ÉCHEC')
+                || document.querySelector('#log').textContent.includes('Error'),
+              { timeout: 15000 }
+            );
+            const output = await page.locator('#log').innerText();
+            console.log(output);
+            if (errors.length) throw new Error('Erreurs JavaScript navigateur : ' + errors.join(' | '));
+            if (!output.includes('Tous les tests automatisés sont réussis.')) {
+              throw new Error('Les tests IndexedDB ont échoué.');
+            }
+            await browser.close();
+          })().catch(error => { console.error(error); process.exit(1); });
+          EOF
+          node run-indexeddb-tests.cjs
