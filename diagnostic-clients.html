@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Diagnostic des fiches clients — Chabanal et fils</title><meta name="robots" content="noindex">
+<style>
+:root{font-family:system-ui,Arial,sans-serif;color:#eaf2ff;background:#03162e}*{box-sizing:border-box}body{max-width:900px;margin:auto;padding:16px;line-height:1.5}section{background:#092b4e;border:1px solid #21547f;border-radius:12px;padding:14px;margin:14px 0;overflow-wrap:anywhere}button,a.btn{display:inline-block;background:#1878dd;border:0;border-radius:9px;padding:11px 15px;color:white;font-weight:650;text-decoration:none;margin:4px}button:disabled{opacity:.5}.muted,small{color:#bfd0e5}pre{white-space:pre-wrap;word-break:break-word;font:.82rem ui-monospace,monospace;background:#04182e;padding:10px;border-radius:8px}.item{padding:9px;margin:8px 0;border:1px solid #315478;border-radius:8px;background:#061d36}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.grid>div{background:#051d35;padding:10px;border-radius:8px}@media(max-width:560px){.grid{grid-template-columns:1fr}}
+</style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script></head>
+<body><h1>Diagnostic des fiches clients</h1><p class="muted">Comparaison détaillée en lecture seule entre les fiches de cet appareil et celles du cloud. Aucune donnée ne sera modifiée, fusionnée ou supprimée.</p>
+<p><a class="btn" href="./">Retour à l'application</a><button id="run">Comparer les fiches clients</button><button id="copy" disabled>Copier le rapport</button></p>
+<section id="status">Appuyez sur « Comparer les fiches clients ».</section><section><h2>Compteurs</h2><div id="counts" class="grid">Pas encore analysé.</div></section>
+<section><h2>Écarts détectés</h2><div id="details">Pas encore analysé.</div></section>
+<section><h2>Rapport à transmettre</h2><pre id="report">Le rapport apparaîtra ici après comparaison.</pre></section>
+<p class="muted"><small>Le rapport n'affiche que les noms des clients, leurs identifiants techniques, les champs différents et les nombres d'interventions. Il n'affiche ni adresses, ni téléphones, ni numéros de série, ni contenu des notes.</small></p>
+<script>
+(()=>{'use strict';
+const CLIENT='metier_clients_v1_2_corrigee',DEL='metier_clients_deleted_v1',META='chabanal_v2_cloud_meta',QUEUE='chabanal_v2_sync_queue',CFG='chabanal_v2_cloud_config';
+const $=id=>document.getElementById(id),arr=x=>Array.isArray(x)?x:[],get=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}};
+const stable=x=>Array.isArray(x)?x.map(stable):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x;
+const sig=x=>JSON.stringify(stable(x)),idOf=c=>String(c?.id??c?.clientId??c?.uuid??''),nameOf=c=>String(c?.name??c?.nom??c?.raisonSociale??'Client sans nom');
+const visible=(xs,ds)=>{const gone=new Set(arr(ds).map(String));return arr(xs).filter(c=>c&&!gone.has(idOf(c)))};
+const interventionCount=c=>arr(c?.interventions).length;
+const safeFields=(a,b)=>[...new Set([...Object.keys(a||{}),...Object.keys(b||{})])].filter(k=>!['interventions','photos','documents','media','notes','historique'].includes(k)&&sig(a?.[k]??null)!==sig(b?.[k]??null)).sort();
+let report='';
+$('copy').onclick=async()=>{try{await navigator.clipboard.writeText(report);$('status').textContent='Rapport copié.'}catch(e){$('status').textContent='Copie impossible : sélectionnez le rapport.'}};
+$('run').onclick=async()=>{$('run').disabled=true;$('copy').disabled=true;$('status').textContent='Lecture locale et cloud en cours…';try{
+ const raw=get(CLIENT),deleted=get(DEL),meta=get(META)||{},queue=get(QUEUE)||{},cfg=get(CFG);
+ if(!Array.isArray(raw))throw Error('Liste locale des clients introuvable ou format inattendu.');
+ if(!cfg?.url||!cfg?.key||!window.supabase)throw Error('Configuration ou bibliothèque Supabase indisponible.');
+ const local=visible(raw,deleted),sb=window.supabase.createClient(cfg.url,cfg.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storage:localStorage}});
+ const session=await sb.auth.getSession();if(session.error)throw session.error;if(!session.data.session)throw Error('Session Supabase absente. Ouvrez l’application et reconnectez-vous.');
+ const [cr,dr]=await Promise.all([sb.from('app_sync_state').select('value_json,version').eq('key_name',CLIENT).maybeSingle(),sb.from('app_sync_state').select('value_json').eq('key_name',DEL).maybeSingle()]);
+ if(cr.error)throw cr.error;if(dr.error)throw dr.error;if(!cr.data)throw Error('Copie des fiches clients absente du cloud.');
+ if(!Array.isArray(cr.data.value_json))throw Error('Format des fiches clients cloud inattendu.');
+ const cloud=visible(cr.data.value_json,dr.data?.value_json),lm=new Map(),cm=new Map();
+ local.forEach(c=>{const id=idOf(c);if(id){if(!lm.has(id))lm.set(id,[]);lm.get(id).push(c)}});
+ cloud.forEach(c=>{const id=idOf(c);if(id){if(!cm.has(id))cm.set(id,[]);cm.get(id).push(c)}});
+ const localOnly=[],cloudOnly=[],diff=[],duplicatesLocal=[],duplicatesCloud=[];
+ for(const [id,xs] of lm)if(xs.length>1)duplicatesLocal.push({id,name:nameOf(xs[0]),count:xs.length});
+ for(const [id,xs] of cm)if(xs.length>1)duplicatesCloud.push({id,name:nameOf(xs[0]),count:xs.length});
+ for(const [id,xs] of lm)if(!cm.has(id))localOnly.push(xs[0]);
+ for(const [id,xs] of cm)if(!lm.has(id))cloudOnly.push(xs[0]);
+ for(const [id,xs] of lm){if(!cm.has(id))continue;const a=xs[0],b=cm.get(id)[0],fields=safeFields(a,b);if(fields.length||interventionCount(a)!==interventionCount(b))diff.push({id,name:nameOf(a),cloudName:nameOf(b),fields,localN:interventionCount(a),cloudN:interventionCount(b)});}
+ const lines=['DIAGNOSTIC DES FICHES CLIENTS — LECTURE SEULE','Date : '+new Date().toLocaleString('fr-FR'),'Fiches locales : '+local.length,'Fiches cloud : '+cloud.length,'Version locale connue : '+Number(meta[CLIENT]||0),'Version cloud : '+Number(cr.data.version||0),'File fiches clients : '+(queue[CLIENT]?'en attente':'vide'),'Clients locaux absents du cloud : '+localOnly.length,'Clients cloud absents du téléphone : '+cloudOnly.length,'Fiches communes avec champs différents : '+diff.length,'Doublons locaux (ID) : '+duplicatesLocal.length,'Doublons cloud (ID) : '+duplicatesCloud.length,''];
+const add=(title,xs,fn)=>{lines.push(title);if(!xs.length)lines.push('Aucun');else xs.forEach(x=>lines.push('• '+fn(x)))};
+add('DÉTAILS — LOCAL UNIQUEMENT',localOnly,c=>nameOf(c)+' | ID '+idOf(c)+' | '+interventionCount(c)+' intervention(s)');
+add('DÉTAILS — CLOUD UNIQUEMENT',cloudOnly,c=>nameOf(c)+' | ID '+idOf(c)+' | '+interventionCount(c)+' intervention(s)');
+add('DÉTAILS — FICHES COMMUNES MODIFIÉES',diff,x=>x.name+' | ID '+x.id+' | champs : '+(x.fields.join(', ')||'aucun champ hors interventions')+' | interventions local/cloud : '+x.localN+'/'+x.cloudN+(x.cloudName!==x.name?' | nom cloud : '+x.cloudName:''));
+add('DOUBLONS LOCAUX',duplicatesLocal,x=>x.name+' | ID '+x.id+' | '+x.count+' occurrences');
+add('DOUBLONS CLOUD',duplicatesCloud,x=>x.name+' | ID '+x.id+' | '+x.count+' occurrences');
+report=lines.join('\n');$('report').textContent=report;
+const counts=$('counts');counts.replaceChildren();[['Clients locaux',local.length],['Clients cloud',cloud.length],['Présents uniquement en local',localOnly.length],['Présents uniquement dans le cloud',cloudOnly.length],['Fiches communes différentes',diff.length],['Doublons ID local/cloud',duplicatesLocal.length+'/'+duplicatesCloud.length]].forEach(([k,v])=>{const box=document.createElement('div'),b=document.createElement('strong'),p=document.createElement('div');b.textContent=k;p.textContent=v;box.append(b,p);counts.append(box)});
+const details=$('details');details.replaceChildren();for(const [title,xs,fn] of [['Uniquement sur ce téléphone',localOnly,c=>nameOf(c)+' — ID '+idOf(c)+' — '+interventionCount(c)+' intervention(s)'],['Uniquement dans le cloud',cloudOnly,c=>nameOf(c)+' — ID '+idOf(c)+' — '+interventionCount(c)+' intervention(s)'],['Fiches communes avec différences',diff,x=>x.name+' — '+(x.fields.join(', ')||'compteur interventions')+' — '+x.localN+'/'+x.cloudN+' interventions']]){const h=document.createElement('h3');h.textContent=title+' ('+xs.length+')';details.append(h);if(!xs.length){const p=document.createElement('p');p.textContent='Aucun écart.';details.append(p)}xs.forEach(x=>{const box=document.createElement('div');box.className='item';box.textContent=fn(x);details.append(box)})}
+ $('copy').disabled=false;$('status').textContent='Comparaison terminée en lecture seule. '+(localOnly.length+cloudOnly.length+diff.length)+' écart(s) détecté(s).';
+ }catch(e){report='DIAGNOSTIC DES FICHES CLIENTS — INCOMPLET\nErreur : '+(e?.message||e);$('report').textContent=report;$('status').textContent=report}finally{$('run').disabled=false}};
+})();
+</script></body></html>
