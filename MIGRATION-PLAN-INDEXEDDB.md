@@ -62,3 +62,24 @@ Après plusieurs synchronisations et rechargements réussis en mode miroir :
 ## Retour arrière
 
 Tant que localStorage est conservé, l'application existante reste le chemin de retour. Toute étape future devra être livrée avec un contrôle d'intégrité avant activation et un mécanisme de désactivation immédiat.
+
+
+## Étape de récupération contrôlée — copie cloud dans IndexedDB du téléphone 1
+
+Un outil séparé a été ajouté : `migration-clients-indexeddb-tel1.html`.
+
+Il est destiné uniquement au téléphone 1 après l'échec de la remise à niveau localStorage par dépassement de quota. Il :
+- lit la copie locale existante sans la modifier ;
+- relit les fiches et la version Supabase ;
+- vérifie les 752 fiches locales visibles et 757 fiches cloud visibles attendues ;
+- conserve le doublon Girodet connu en vérifiant le même nombre d'occurrences local/cloud ;
+- vérifie que les interventions locales des fiches communes sont présentes dans le cloud ;
+- vérifie que la file clients est vide et que les suppressions locales/cloud concordent ;
+- refuse de remplacer un snapshot IndexedDB déjà présent ;
+- ajoute un seul snapshot cloud dans la base IndexedDB `chabanal_clients_db`, puis le relit et compare l'intégralité du contenu.
+
+Cette copie est une sauvegarde technique supplémentaire uniquement. L'application continue à lire et écrire dans localStorage. Aucun basculement applicatif, aucune synchronisation supplémentaire et aucune modification de Supabase ne sont activés.
+
+**Conditions avant exécution :** vérifier que le fichier JSON de sauvegarde local téléchargé avant la tentative de réparation est toujours conservé. Exécuter l'outil uniquement sur le téléphone 1, après publication contrôlée de cette branche et vérification de l'URL servie. En cas de rapport différent des compteurs attendus ou de toute erreur, arrêter et transmettre le rapport.
+
+La branche `indexeddb-clients-migration` reste isolée ; `main` et la production ne sont pas modifiées.
