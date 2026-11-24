@@ -111,15 +111,20 @@
     return operation;
   }
 
-  async function replaceFromCloud(clients) {
+  function replaceFromCloud(clients) {
     const snapshot = JSON.parse(JSON.stringify(validateClients(clients)));
-    await writeChain;
-    const result = await writeRecord(snapshot, "supabase");
-    const verified = await readRecord();
-    if (!verified || JSON.stringify(verified.value) !== JSON.stringify(snapshot)) {
-      throw new Error("La copie cloud n'a pas pu être vérifiée dans IndexedDB.");
-    }
-    return result;
+    // Sérialiser le remplacement cloud avec les sauvegardes locales. Sans cela,
+    // une sauvegarde lancée pendant l'attente pourrait écraser la copie cloud.
+    const operation = writeChain.then(async () => {
+      const result = await writeRecord(snapshot, "supabase");
+      const verified = await readRecord();
+      if (!verified || JSON.stringify(verified.value) !== JSON.stringify(snapshot)) {
+        throw new Error("La copie cloud n'a pas pu être vérifiée dans IndexedDB.");
+      }
+      return result;
+    });
+    writeChain = operation.catch(() => {});
+    return operation;
   }
 
   async function exportLegacyCopy() {
