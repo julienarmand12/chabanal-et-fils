@@ -74,7 +74,7 @@ function createBackend() {
     function log(row, operation) {
       const ws = db.workspaces.find(x => x.id === row.workspace_id);
       ws.change_seq += 1;
-      db.events.push({ seq: ws.change_seq, entity_type: row.entity_type, record_id: row.record_id,
+      db.events.push({ workspace_id: row.workspace_id, seq: ws.change_seq, entity_type: row.entity_type, record_id: row.record_id,
         operation, revision: row.revision, payload: { ...row.payload }, changed_at: row.updated_at });
     }
     return q;
