@@ -49,7 +49,10 @@
     running = true;
     try {
       const records = mapper();
-      if (typeof global.metierMediaSupabase !== "function") throw new Error("Accès Supabase authentifié indisponible. Aucun envoi effectué.");\n      const client = await global.metierMediaSupabase();\n      if (!client) throw new Error("Connexion Supabase non authentifiée. Aucun envoi effectué.");\n      const sync = global.ChabanalV2DeltaSync.create(client);
+      if (typeof global.metierMediaSupabase !== "function") throw new Error("Accès Supabase authentifié indisponible. Aucun envoi effectué.");
+      const client = await global.metierMediaSupabase();
+      if (!client) throw new Error("Connexion Supabase non authentifiée. Aucun envoi effectué.");
+      const sync = global.ChabanalV2DeltaSync.create(client);
       const state = readState();
       const current = new Map(records.map(row => [row.entity_type + "::" + row.record_id, row]));
       let sent = 0, removed = 0;
@@ -95,7 +98,9 @@
   function activate() {
     if (enabled()) return Promise.resolve({ enabled: true });
     const check = mapper();
-    if (!confirm("Activer l'envoi V1 → V2 sur cet appareil ?\n\n" +
+    if (!confirm("Activer l'envoi V1 → V2 sur cet appareil ?
+
+" +
       check.length + " enregistrements métier seront envoyés vers le workspace V2. " +
       "Les médias sont exclus. Cette opération envoie des données professionnelles à Supabase. " +
       "La réception V2 → V1 n'est pas encore activée.")) return Promise.resolve({ cancelled: true });
