@@ -91,7 +91,11 @@
         throw new Error("Type ou identifiant de suppression invalide");
       }
       await registerDevice();
-      return writeCAS(type, id, tombstone && typeof tombstone === "object" ? tombstone : { id }, new Date().toISOString());
+      const deletedAt = new Date().toISOString();
+      const payload = tombstone && typeof tombstone === "object" ? { ...tombstone } : { id };
+      payload.__deleted = true;
+      payload.__deleted_at = deletedAt;
+      return writeCAS(type, id, payload, deletedAt);
     }
 
     async function pullDelta(onChange) {
@@ -112,7 +116,7 @@
           // qui pourrait déjà représenter une modification ultérieure.
           await onChange({
             ...event,
-            deleted: event.operation === "DELETE" || !!event.payload?.deleted_at,
+            deleted: String(event.operation).toLowerCase() === "delete" || !!event.payload?.__deleted,
             record: event.payload || null
           });
           // Le curseur avance uniquement après traitement réussi de l'événement.
