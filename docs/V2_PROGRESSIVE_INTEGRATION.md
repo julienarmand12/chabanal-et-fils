@@ -54,6 +54,6 @@ Le module `v2-inbound-staging.js` prépare une réception contrôlée des évén
 - une exportation JSON de la zone tampon est prévue ;
 - aucun événement n'est automatiquement fusionné dans les clés métier V1.
 
-**Blocage d'intégration identifié :** le client Supabase V1 (`sb`) est déclaré dans une portée JavaScript privée et n'est pas exposé aux modules V2. Le module de réception exige donc un client explicite et le pont sortant vérifie `window.chabanalSupabaseClient`. Cette propriété n'est pas encore fournie par V1. En l'état, ni le pull ni le push ne doivent être considérés comme opérationnels dans l'application.
+Le code V1 expose déjà `window.metierMediaSupabase()`, qui initialise le client existant et ne le retourne qu'après validation de la session Auth. Les modules V2 réutilisent ce point d'accès : aucune seconde session ni clé supplémentaire n'est créée. Le pont sortant reste désactivé par défaut.
 
-La prochaine modification nécessaire est un point d'accès contrôlé au client Supabase après authentification, sans exposer de clé secrète et sans créer une seconde session Auth. Ensuite seulement : tests avec données synthétiques, mapping inverse et résolution des conflits avant toute écriture dans les clés V1.
+Le panneau de réception propose désormais un pull manuel vers une zone tampon locale. Le curseur delta n'avance qu'après stockage réussi de chaque événement. Aucun événement n'est fusionné dans les clés V1 : le mapping inverse, la détection des modifications locales concurrentes et l'application transactionnelle restent à développer et tester.
