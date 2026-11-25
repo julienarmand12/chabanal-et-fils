@@ -179,10 +179,9 @@
       const id = String(d.id);
       if (seenDiagnostics.has(id)) { errors.push("Identifiant de marque diagnostic en double : " + id); continue; }
       seenDiagnostics.add(id);
-      const { documents = [], ...diagnosticPayload } = d;
-      add(records, "diagnostic_brand", id, diagnosticPayload);
-      if (Array.isArray(documents) && documents.length) {
-        warnings.push("Documents intégrés à la marque de diagnostic " + id + " : format à contrôler avant migration.");
+      add(records, "diagnostic_brand", id, d);
+      if (Array.isArray(d.documents) && d.documents.length) {
+        warnings.push("Documents intégrés conservés dans le payload diagnostic " + id + " ; leur extraction vers le stockage média dédié reste à faire.");
       }
     }
 
