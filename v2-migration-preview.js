@@ -101,7 +101,16 @@
     mount
   });
 
-  function loadInboundStaging() {\n    if (document.getElementById("v2InboundStagingScript")) return;\n    const script = document.createElement("script");\n    script.id = "v2InboundStagingScript";\n    script.src = "./v2-inbound-staging.js?v=20261125-1";\n    script.defer = true;\n    document.head.appendChild(script);\n  }\n\n  function loadOperationBridge() {
+  function loadInboundStaging() {
+    if (document.getElementById("v2InboundStagingScript")) return;
+    const script = document.createElement("script");
+    script.id = "v2InboundStagingScript";
+    script.src = "./v2-inbound-staging.js?v=20261125-1";
+    script.defer = true;
+    document.head.appendChild(script);
+  }
+
+  function loadOperationBridge() {
     if (document.getElementById("v2OperationBridgeScript")) return;
     const script = document.createElement("script");
     script.id = "v2OperationBridgeScript";
@@ -115,5 +124,6 @@
   } else {
     mount();
     loadOperationBridge();
+    loadInboundStaging();
   }
 })(window);
