@@ -28,3 +28,18 @@ Le protocole réel à deux appareils n'a pas encore été exécuté. Il faut d'a
 3. Exécuter les tests automatisés du moteur et de ses conflits de révision.
 4. Valider création, modification, suppression logique, reprise hors ligne et médias sur deux téléphones de test.
 5. Présenter un bilan et demander un accord distinct avant migration réelle ou bascule de production.
+
+
+## Pont des opérations métier (envoi sortant uniquement)
+
+Le fichier `v2-operation-bridge.js` est chargé depuis le panneau de contrôle. Il surveille les écritures des clés métier V1 et, uniquement après activation explicite dans l'interface, transmet les enregistrements normalisés au moteur delta V2 avec contrôle de révision.
+
+Garde-fous :
+- Le pont reste désactivé par défaut.
+- L'activation demande une confirmation avant le premier envoi.
+- Les médias et les documents encore intégrés en Data URL bloquent l'envoi ; aucun contenu binaire n'est envoyé dans les payloads métier.
+- Les erreurs et conflits arrêtent l'envoi concerné ; les données V1 restent la référence locale.
+- Aucun pull V2 vers V1 n'est encore branché. Ne pas activer sur le second téléphone et ne pas considérer cette étape comme une synchronisation multi-appareils.
+- Aucun changement n'a été déployé sur l'application en production.
+
+La prochaine étape est l'adaptateur de réception V2 -> V1, la reprise des curseurs et l'adaptateur Storage privé, puis des tests sur deux appareils avec données synthétiques.
