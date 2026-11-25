@@ -49,7 +49,7 @@
     running = true;
     try {
       const records = mapper();
-      if (!global.chabanalSupabaseClient) throw new Error("Client Supabase V2 non raccordé : le moteur V1 conserve son client dans une portée privée. Aucun envoi effectué.");\n      const sync = global.ChabanalV2DeltaSync.create(global.chabanalSupabaseClient);
+      if (typeof global.metierMediaSupabase !== "function") throw new Error("Accès Supabase authentifié indisponible. Aucun envoi effectué.");\n      const client = await global.metierMediaSupabase();\n      if (!client) throw new Error("Connexion Supabase non authentifiée. Aucun envoi effectué.");\n      const sync = global.ChabanalV2DeltaSync.create(client);
       const state = readState();
       const current = new Map(records.map(row => [row.entity_type + "::" + row.record_id, row]));
       let sent = 0, removed = 0;
