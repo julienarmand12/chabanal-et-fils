@@ -35,7 +35,7 @@ const count = type => result.records.filter(x => x.entity_type === type).length;
 assert.equal(count("client"), 1);
 assert.equal(count("intervention"), 1);
 assert.equal(count("equipment_installation"), 1);
-assert.equal(count("equipment_serial"), 1);
+assert.equal(count("equipment_serial"), 1, "Le numéro de série et son année sont regroupés par équipement");
 assert.equal(count("media"), 2);
 assert.equal(result.records.find(x => x.entity_type === "equipment_serial").payload.year, "2020");
 assert.equal(count("stock_item"), 2);
