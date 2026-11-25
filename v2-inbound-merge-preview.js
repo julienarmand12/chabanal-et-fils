@@ -157,6 +157,12 @@
     }
     for(const [id,rows] of incomingInterventions) if(!incomingClients.has(id))
       actions.push({type:"intervention",id,status:"orphan-review",reason:"Interventions reçues sans événement client correspondant.",count:rows.length});
+    const compact=[];
+    for(const action of actions){
+      if(action.key){const index=compact.findIndex(x=>x.key===action.key&&x.type===action.type);if(index>=0){compact[index]=action;continue}}
+      compact.push(action);
+    }
+    actions.splice(0,actions.length,...compact);
     const counts=actions.reduce((o,a)=>(o[a.status]=(o[a.status]||0)+1,o),{});
     return {generated_at:new Date().toISOString(),mode:"preview-only",writes_performed:false,
       safety:"Lecture seule : aucune écriture localStorage, aucun appel réseau, aucune fusion ou suppression automatique.",
