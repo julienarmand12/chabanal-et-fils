@@ -55,16 +55,35 @@
       return id;
     }
 
+    async function writeCAS(type, id, payload, deletedAt) {
+      const current = await client.from("app_v2_records")
+        .select("revision").eq("workspace_id", workspaceId)
+        .eq("entity_type", type).eq("record_id", id).maybeSingle();
+      if (current.error) throw current.error;
+      const row = {
+        workspace_id: workspaceId, entity_type: type, record_id: id,
+        payload, deleted_at: deletedAt || null
+      };
+      if (!current.data) {
+        const inserted = await client.from("app_v2_records").insert(row)
+          .select("entity_type,record_id,revision,updated_at,deleted_at").maybeSingle();
+        if (inserted.error) throw inserted.error;
+        if (!inserted.data) throw new Error("Conflit : l'enregistrement a été créé par un autre appareil.");
+        return inserted.data;
+      }
+      const updated = await client.from("app_v2_records").update(row)
+        .eq("workspace_id", workspaceId).eq("entity_type", type)
+        .eq("record_id", id).eq("revision", current.data.revision)
+        .select("entity_type,record_id,revision,updated_at,deleted_at").maybeSingle();
+      if (updated.error) throw updated.error;
+      if (!updated.data) throw new Error("Conflit de synchronisation : une autre modification est arrivée. Relisez avant de réessayer.");
+      return updated.data;
+    }
+
     async function save(type, id, payload) {
       assertEntity(type, id, payload);
       await registerDevice();
-      const { data, error } = await client.from("app_v2_records").upsert({
-        workspace_id: workspaceId, entity_type: type, record_id: id,
-        payload, deleted_at: null
-      }, { onConflict: "workspace_id,entity_type,record_id" })
-        .select("entity_type,record_id,revision,updated_at").single();
-      if (error) throw error;
-      return data;
+      return writeCAS(type, id, payload, null);
     }
 
     async function remove(type, id, tombstone) {
@@ -72,14 +91,7 @@
         throw new Error("Type ou identifiant de suppression invalide");
       }
       await registerDevice();
-      const { data, error } = await client.from("app_v2_records").upsert({
-        workspace_id: workspaceId, entity_type: type, record_id: id,
-        payload: tombstone && typeof tombstone === "object" ? tombstone : { id },
-        deleted_at: new Date().toISOString()
-      }, { onConflict: "workspace_id,entity_type,record_id" })
-        .select("entity_type,record_id,revision,updated_at,deleted_at").single();
-      if (error) throw error;
-      return data;
+      return writeCAS(type, id, tombstone && typeof tombstone === "object" ? tombstone : { id }, new Date().toISOString());
     }
 
     async function pullDelta(onChange) {
@@ -96,20 +108,13 @@
         if (!events || !events.length) break;
 
         for (const event of events) {
-          if (event.operation === "DELETE") {
-            await onChange({ ...event, deleted: true, record: event.payload || null });
-          } else {
-            const { data: record, error: recordError } = await client.from("app_v2_records")
-              .select("entity_type,record_id,payload,revision,updated_at,deleted_at")
-              .eq("workspace_id", workspaceId)
-              .eq("entity_type", event.entity_type).eq("record_id", event.record_id)
-              .maybeSingle();
-            if (recordError) throw recordError;
-            await onChange({
-              ...event, deleted: !!record?.deleted_at,
-              record: record || null
-            });
-          }
+          // Le journal contient le snapshot de l'événement : ne pas relire la ligne courante,
+          // qui pourrait déjà représenter une modification ultérieure.
+          await onChange({
+            ...event,
+            deleted: event.operation === "DELETE" || !!event.payload?.deleted_at,
+            record: event.payload || null
+          });
           // Le curseur avance uniquement après traitement réussi de l'événement.
           next = Number(event.seq);
           localStorage.setItem(CURSOR_KEY, String(next));
