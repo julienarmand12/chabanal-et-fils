@@ -43,3 +43,17 @@ Garde-fous :
 - Aucun changement n'a été déployé sur l'application en production.
 
 La prochaine étape est l'adaptateur de réception V2 -> V1, la reprise des curseurs et l'adaptateur Storage privé, puis des tests sur deux appareils avec données synthétiques.
+
+
+## Réception V2 — zone tampon, pas de fusion V1
+
+Le module `v2-inbound-staging.js` prépare une réception contrôlée des événements du journal V2 :
+- les événements sont conservés dans une zone tampon locale plafonnée (2 000 événements / 3 Mo) ;
+- les événements déjà reçus sont dédupliqués par numéro de séquence ;
+- les médias contenant une Data URL, ou sans référence Storage privée, bloquent la réception ;
+- une exportation JSON de la zone tampon est prévue ;
+- aucun événement n'est automatiquement fusionné dans les clés métier V1.
+
+**Blocage d'intégration identifié :** le client Supabase V1 (`sb`) est déclaré dans une portée JavaScript privée et n'est pas exposé aux modules V2. Le module de réception exige donc un client explicite et le pont sortant vérifie `window.chabanalSupabaseClient`. Cette propriété n'est pas encore fournie par V1. En l'état, ni le pull ni le push ne doivent être considérés comme opérationnels dans l'application.
+
+La prochaine modification nécessaire est un point d'accès contrôlé au client Supabase après authentification, sans exposer de clé secrète et sans créer une seconde session Auth. Ensuite seulement : tests avec données synthétiques, mapping inverse et résolution des conflits avant toute écriture dans les clés V1.
