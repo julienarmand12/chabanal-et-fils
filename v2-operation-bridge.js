@@ -98,9 +98,7 @@
   function activate() {
     if (enabled()) return Promise.resolve({ enabled: true });
     const check = mapper();
-    if (!confirm("Activer l'envoi V1 → V2 sur cet appareil ?
-
-" +
+    if (!confirm("Activer l'envoi V1 → V2 sur cet appareil ?\n\n" +
       check.length + " enregistrements métier seront envoyés vers le workspace V2. " +
       "Les médias sont exclus. Cette opération envoie des données professionnelles à Supabase. " +
       "La réception V2 → V1 n'est pas encore activée.")) return Promise.resolve({ cancelled: true });
