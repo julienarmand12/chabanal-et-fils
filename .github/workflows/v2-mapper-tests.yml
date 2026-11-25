@@ -25,3 +25,5 @@ jobs:
           node --check v2-migration-preview.js
       - name: Run read-only mapper tests
         run: node legacy-v2-mapper.test.js
+      - name: Run mocked two-device delta sync tests
+        run: node sync-v2-delta.test.js
