@@ -128,6 +128,15 @@
     script.defer = true; document.head.appendChild(script);
   }
 
+  function loadMediaTransfer() {
+    if (document.getElementById("v2MediaTransferScript")) return;
+    const script = document.createElement("script");
+    script.id = "v2MediaTransferScript";
+    script.src = "./v2-media-transfer.js?v=20261125-2";
+    script.defer = true;
+    document.head.appendChild(script);
+  }
+
   function loadOperationBridge() {
     if (document.getElementById("v2OperationBridgeScript")) return;
     const script = document.createElement("script");
@@ -138,11 +147,12 @@
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", function () { mount(); loadOperationBridge(); loadMergePreview(); loadInboundStaging(); loadMediaInventory(); }, { once: true });
+    document.addEventListener("DOMContentLoaded", function () { mount(); loadOperationBridge(); loadMergePreview(); loadInboundStaging(); loadMediaInventory(); loadMediaTransfer(); }, { once: true });
   } else {
     mount();
     loadOperationBridge();
     loadInboundStaging();
     loadMediaInventory();
+    loadMediaTransfer();
   }
 })(window);
