@@ -33,7 +33,8 @@
     if(!Array.isArray(local.clients)||!Array.isArray(local.models)||!Array.isArray(local.diagnostics)||
        !Array.isArray(local.deleted)||!local.recovery||!Array.isArray(local.recovery.entries))
       throw new Error("Une ou plusieurs structures V1 ne correspondent pas au format attendu.");
-    const actions=[],unsupported=[],groups=new Map();
+    const actions=[],unsupported=[];
+    const working={models:clone(local.models),assignments:clone(local.assignments),serials:clone(local.serials),notifications:clone(local.notifications),diagnostics:clone(local.diagnostics),recovery:clone(local.recovery),stockCache:clone(local.stockCache)};
     const add=(key,type,id,proposed,reason)=>{
       const current=parse(storage,key,null);
       actions.push({type,id,key,status:same(current,proposed)?"already-identical":"manual-review",reason,local:current,proposed});
@@ -65,62 +66,68 @@
           incomingInterventions.get(cid).push({seq:e.seq,index:p.legacy_index,item});break;
         }
         case "equipment_model": {
-          const arr=clone(local.models),i=arr.findIndex(x=>String(x.id)===String(e.record_id));
+          const arr=working.models.slice(),i=arr.findIndex(x=>String(x.id)===String(e.record_id));
           if(i>=0) arr[i]={...arr[i],...clone(p),documents:arr[i].documents||[]};
           else arr.push({...clone(p),documents:[]});
+          working.models=arr;
           add(K.models,"equipment_model",e.record_id,arr,"Catalogue V1 proposé ; documents locaux conservés lors d'une mise à jour.");
           break;
         }
         case "equipment_installation": {
           const cid=String(p.client_id||""),mid=String(p.model_id||"");
           if(!cid||!mid){unsupported.push({seq:e.seq,reason:"Attribution équipement sans client_id ou model_id"});break}
-          const obj=clone(local.assignments),list=Array.isArray(obj[cid])?obj[cid].slice():[];
+          const obj=clone(working.assignments),list=Array.isArray(obj[cid])?obj[cid].slice():[];
           const install={...clone(p)};delete install.client_id;delete install.model_id;delete install.legacy_index;
           if(!list.some(x=>String(typeof x==="string"?x:(x.modelId||x.model_id||x.id))===mid))
             list.push(Object.keys(install).length?{...install,modelId:mid}:mid);
-          obj[cid]=list;
+          obj[cid]=list;working.assignments=obj;
           add(K.assignments,"equipment_installation",e.record_id,obj,"Attributions V1 proposées sans retirer les installations existantes.");
           break;
         }
         case "equipment_serial": {
           const cid=String(p.client_id||""),mid=String(p.model_id||"");
           if(!cid||!mid){unsupported.push({seq:e.seq,reason:"Numéro de série sans client_id ou model_id"});break}
-          const obj=clone(local.serials);obj[cid]={...(obj[cid]||{})};
+          const obj=clone(working.serials);obj[cid]={...(obj[cid]||{})};
           if(p.serial)obj[cid][mid]=String(p.serial);else delete obj[cid][mid];
           if(p.year)obj[cid]["__year__"+mid]=String(p.year);else delete obj[cid]["__year__"+mid];
+          working.serials=obj;
           add(K.serials,"equipment_serial",e.record_id,obj,"Numéros de série et années proposés par client et modèle.");
           break;
         }
         case "notification": {
-          const obj=clone(local.notifications);obj[String(e.record_id)]=clone(p);
+          const obj=clone(working.notifications);obj[String(e.record_id)]=clone(p);
+          working.notifications=obj;
           add(K.notifications,"notification",e.record_id,obj,"Notification V1 proposée sans écraser les autres notifications.");
           break;
         }
         case "diagnostic_brand": {
-          const arr=clone(local.diagnostics),i=arr.findIndex(x=>String(x.id)===String(e.record_id));
+          const arr=working.diagnostics.slice(),i=arr.findIndex(x=>String(x.id)===String(e.record_id));
           if(i>=0) arr[i]={...arr[i],...clone(p),documents:arr[i].documents||[],codes:arr[i].codes||[]};
           else arr.push({...clone(p),documents:Array.isArray(p.documents)?p.documents:[],codes:Array.isArray(p.codes)?p.codes:[]});
+          working.diagnostics=arr;
           add(K.diagnostics,"diagnostic_brand",e.record_id,arr,"Marque de diagnostic proposée ; codes et documents V1 existants préservés.");
           break;
         }
         case "recovery_time": {
           if(typeof p.id!=="string"||!p.id){unsupported.push({seq:e.seq,reason:"Entrée de récupération sans identifiant"});break}
-          const obj=clone(local.recovery),entries=Array.isArray(obj.entries)?obj.entries.slice():[];
+          const obj=clone(working.recovery),entries=Array.isArray(obj.entries)?obj.entries.slice():[];
           const i=entries.findIndex(x=>String(x.id)===String(p.id));
           const entry=clone(p);delete entry.dayMinutes;
           if(i>=0)entries[i]={...entries[i],...entry};else entries.push(entry);
           obj.entries=entries;
           if(Number(p.dayMinutes)>0)obj.dayMinutes=Number(p.dayMinutes);
+          working.recovery=obj;
           add(K.recovery,"recovery_time",e.record_id,obj,"Historique de récupération proposé ; les entrées locales non présentes dans V2 sont conservées.");
           break;
         }
         case "stock_item": {
           if(!p.id||!p.kind){unsupported.push({seq:e.seq,reason:"Article de stock sans id ou kind"});break}
           const key="metier_stock_v1_"+String(p.kind)+"_"+String(p.id);
-          const pending=clone(local.stockPending),cache=clone(local.stockCache);
+          const pending=clone(local.stockPending),cache=clone(working.stockCache);
           const current=pending[key]?.value||cache[key]?.value||null;
           const proposed={...(current||{}),...clone(p)};
           const cacheProposed={...cache,[key]:{value:proposed,version:Number(cache[key]?.version||0)}};
+          working.stockCache=cacheProposed;
           add(K.stockCache,"stock_item",e.record_id,cacheProposed,"Article proposé dans le cache stock V1 ; la file d'attente locale n'est pas écrasée.");
           if(pending[key]) actions.push({type:"stock_item",id:e.record_id,key:K.stockPending,status:"conflict",reason:"Une modification locale de cet article est déjà en attente : arbitrage obligatoire.",local:pending[key],proposed});
           break;
