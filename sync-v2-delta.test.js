@@ -10,6 +10,7 @@ const workspaceId = "ad49e922-7fd9-447d-b5df-0e5de2ce2554";
 function createBackend() {
   const db = { records: [], events: [], devices: [], cursors: [], workspaces: [{ id: workspaceId, change_seq: 0, updated_at: "now" }] };
   function query(table) {
+    const tableKey = ({ app_v2_records: "records", app_v2_change_log: "events", app_v2_devices: "devices", app_v2_sync_cursors: "cursors", app_v2_workspaces: "workspaces" })[table];
     let action = "select", values = null, filters = [], sort = null, max = Infinity, returning = false;
     const q = {
       select() { returning = true; return q; },
@@ -25,7 +26,7 @@ function createBackend() {
       then(resolve, reject) { return execute(false).then(resolve, reject); }
     };
     async function execute(single) {
-      let rows = db[table];
+      let rows = db[tableKey];
       const matches = x => filters.every(f => f(x));
       let data = null;
       if (action === "insert") {
