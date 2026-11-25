@@ -101,7 +101,16 @@
     mount
   });
 
-  function loadMergePreview() {\n    if (document.getElementById("v2MergePreviewScript")) return;\n    const script = document.createElement("script");\n    script.id = "v2MergePreviewScript";\n    script.src = "./v2-inbound-merge-preview.js?v=20261125-1";\n    script.defer = true;\n    document.head.appendChild(script);\n  }\n\n  function loadInboundStaging() {
+  function loadMergePreview() {
+    if (document.getElementById("v2MergePreviewScript")) return;
+    const script = document.createElement("script");
+    script.id = "v2MergePreviewScript";
+    script.src = "./v2-inbound-merge-preview.js?v=20261125-1";
+    script.defer = true;
+    document.head.appendChild(script);
+  }
+
+  function loadInboundStaging() {
     if (document.getElementById("v2InboundStagingScript")) return;
     const script = document.createElement("script");
     script.id = "v2InboundStagingScript";
