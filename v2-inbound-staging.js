@@ -205,7 +205,7 @@
     panel.append(title, note, statusLine, pullButton, exportButton, planButton, clearButton);
     host.appendChild(panel); refresh();
   }
-  global.ChabanalV2InboundStaging = Object.freeze({ pull, status, exportJson, clearAfterExport, mount });
+  global.ChabanalV2InboundStaging = Object.freeze({ pull, status, listEvents: allEvents, exportJson, clearAfterExport, mount });
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", mount, { once: true });
   } else mount();
