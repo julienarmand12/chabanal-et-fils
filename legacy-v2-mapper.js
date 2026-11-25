@@ -13,7 +13,9 @@
     serials: "metier_equipement_numeros_serie_v1",
     notifications: "metier_notifications_pieces_v1",
     diagnostics: "metier_diagnostics_marques_v1",
-    recovery: "metier_heures_recuperation_v1"
+    recovery: "metier_heures_recuperation_v1",
+    stockCache: "chabanal_stock_cache_v1",
+    stockPending: "chabanal_stock_pending_v1"
   });
 
   const ALLOWED = new Set([
@@ -57,6 +59,8 @@
     const notifications = read(storage, KEYS.notifications, {});
     const diagnostics = read(storage, KEYS.diagnostics, []);
     const recovery = read(storage, KEYS.recovery, { entries: [] });
+    const stockCache = read(storage, KEYS.stockCache, {});
+    const stockPending = read(storage, KEYS.stockPending, {});
 
     const errors = [], warnings = [], records = [];
     if (!Array.isArray(clients)) errors.push("La liste des clients n'est pas un tableau.");
@@ -67,6 +71,8 @@
     if (!notifications || typeof notifications !== "object" || Array.isArray(notifications)) errors.push("Les notifications sont invalides.");
     if (!Array.isArray(diagnostics)) errors.push("Les marques de diagnostic ne sont pas un tableau.");
     if (!recovery || typeof recovery !== "object" || !Array.isArray(recovery.entries)) errors.push("Les heures de récupération sont invalides.");
+    if (!stockCache || typeof stockCache !== "object" || Array.isArray(stockCache)) errors.push("Le cache du stock est invalide.");
+    if (!stockPending || typeof stockPending !== "object" || Array.isArray(stockPending)) errors.push("La file du stock est invalide.");
     if (errors.length) return { ok: false, errors, warnings, counts: {}, records: [] };
 
     const deletedSet = new Set(deleted.map(String));
@@ -183,9 +189,23 @@
       id, entity_type: "client", deleted: true, source: "metier_clients_deleted_v1"
     }));
 
+    // Le module stock conserve les objets métier dans cache et pending sous forme {key:{value,version}}.
+    const stockRows = { ...stockCache };
+    for (const [key, pendingRow] of Object.entries(stockPending)) {
+      if (pendingRow && Object.prototype.hasOwnProperty.call(pendingRow, "value")) {
+        stockRows[key] = { ...(stockRows[key] || {}), value: pendingRow.value };
+      }
+    }
+    for (const [key, wrapper] of Object.entries(stockRows)) {
+      if (!key.startsWith("metier_stock_v1_")) continue;
+      const item = wrapper && wrapper.value;
+      if (!item || typeof item !== "object" || !item.id || !item.kind) {
+        errors.push("Enregistrement de stock invalide dans " + key); continue;
+      }
+      add(records, "stock_item", String(item.kind) + "::" + String(item.id), item);
+    }
+
     // La version applicative et les clés de configuration/session ne sont pas des données métier.
-    // Les pièces jointes diagnostiques et le stock n'ont pas de source locale identifiée dans ce fichier.
-    warnings.push("Aucune clé de stock n'est présente dans la source index.html analysée : ne pas inventer ni migrer de stock depuis ce fichier.");
     warnings.push("Les pièces jointes média sont transportées comme data URLs dans les enregistrements V2 pour ce premier mapping ; un stockage objet Supabase dédié sera préférable avant migration volumineuse.");
     const counts = records.reduce((out, row) => {
       out[row.entity_type] = (out[row.entity_type] || 0) + 1;
