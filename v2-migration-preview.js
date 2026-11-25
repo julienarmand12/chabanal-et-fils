@@ -119,7 +119,7 @@
     document.head.appendChild(script);
   }
 
-  function loadOperationBridge() {
+  function loadMediaInventory() {\n    if (document.getElementById("v2MediaInventoryScript")) return;\n    const script = document.createElement("script");\n    script.id = "v2MediaInventoryScript";\n    script.src = "./v2-media-inventory.js?v=20261125-1";\n    script.onload = function () { global.ChabanalV2MediaInventory?.mount(); };\n    script.defer = true; document.head.appendChild(script);\n  }\n\n  function loadOperationBridge() {
     if (document.getElementById("v2OperationBridgeScript")) return;
     const script = document.createElement("script");
     script.id = "v2OperationBridgeScript";
@@ -129,7 +129,7 @@
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", function () { mount(); loadOperationBridge(); loadMergePreview(); loadInboundStaging(); }, { once: true });
+    document.addEventListener("DOMContentLoaded", function () { mount(); loadOperationBridge(); loadMergePreview(); loadInboundStaging(); loadMediaInventory(); }, { once: true });
   } else {
     mount();
     loadOperationBridge();
