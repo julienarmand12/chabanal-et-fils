@@ -52,7 +52,10 @@
     if (!global.ChabanalV2DeltaSync) throw new Error("Moteur delta V2 indisponible.");
     busy = true;
     try {
-      if (typeof global.metierMediaSupabase !== "function") throw new Error("Accès Supabase authentifié indisponible.");\n      const client = await global.metierMediaSupabase();\n      if (!client) throw new Error("Connexion Supabase non authentifiée. Connectez-vous d’abord à la base métier.");\n      const sync = global.ChabanalV2DeltaSync.create(client);
+      if (typeof global.metierMediaSupabase !== "function") throw new Error("Accès Supabase authentifié indisponible.");
+      const client = await global.metierMediaSupabase();
+      if (!client) throw new Error("Connexion Supabase non authentifiée. Connectez-vous d’abord à la base métier.");
+      const sync = global.ChabanalV2DeltaSync.create(client);
       const result = await sync.pullDelta(async event => { stage(event); });
       const meta = { lastPullAt: new Date().toISOString(), cursor: result.cursor, processed: result.processed };
       localStorage.setItem(META_KEY, JSON.stringify(meta));
@@ -83,5 +86,47 @@
     a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     return readInbox().length;
   }
-  global.ChabanalV2InboundStaging = Object.freeze({ pull, status, exportJson, clearAfterExport });
+  function mount() {
+    const host = document.getElementById("v2LocalPreviewPanel");
+    if (!host || document.getElementById("v2InboundStagingPanel")) return;
+    const panel = document.createElement("div");
+    panel.id = "v2InboundStagingPanel";
+    panel.style.cssText = "margin-top:12px;padding:12px;border:1px solid #45617b;border-radius:10px";
+    const title = document.createElement("strong");
+    title.textContent = "Réception V2 — zone tampon sécurisée";
+    const note = document.createElement("p");
+    note.className = "muted small";
+    note.textContent = "Télécharge les événements V2 dans une zone séparée. Aucune fiche V1 n'est modifiée automatiquement.";
+    const statusLine = document.createElement("p");
+    statusLine.className = "muted small";
+    const refresh = () => {
+      const s = status();
+      statusLine.textContent = s.count + " événement(s) en attente" +
+        (s.meta.cursor ? " · curseur " + s.meta.cursor : "");
+    };
+    const pullButton = document.createElement("button");
+    pullButton.type = "button"; pullButton.className = "secondary small";
+    pullButton.textContent = "Recevoir les événements V2 (sans fusion)";
+    pullButton.addEventListener("click", async () => {
+      pullButton.disabled = true; statusLine.textContent = "Réception en cours…";
+      try {
+        const result = await pull();
+        statusLine.textContent = result.processed + " événement(s) lus · " + result.staged + " en attente dans la zone tampon.";
+      } catch (error) { statusLine.textContent = "Réception suspendue : " + error.message; }
+      finally { pullButton.disabled = false; refresh(); }
+    });
+    const exportButton = document.createElement("button");
+    exportButton.type = "button"; exportButton.className = "secondary small";
+    exportButton.style.marginLeft = "8px"; exportButton.textContent = "Exporter la zone tampon";
+    exportButton.addEventListener("click", () => {
+      try { const n = exportJson(); statusLine.textContent = n + " événement(s) exporté(s) en JSON."; }
+      catch (error) { statusLine.textContent = "Export impossible : " + error.message; }
+    });
+    panel.append(title, note, statusLine, pullButton, exportButton);
+    host.appendChild(panel); refresh();
+  }
+  global.ChabanalV2InboundStaging = Object.freeze({ pull, status, exportJson, clearAfterExport, mount });
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", mount, { once: true });
+  } else mount();
 })(window);
