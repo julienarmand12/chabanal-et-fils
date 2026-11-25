@@ -122,7 +122,13 @@ Un test est réussi uniquement si les données finales concordent sur A, B et le
 - Écarts observés :
 - Décision : accepté / refusé / à corriger.
 
-## 7. Ordre de réalisation retenu
+## 7. Inventaire média local — implémenté en prévisualisation
+
+Le module `v2-media-inventory.js` analyse en lecture seule les Data URL issues du mapper V1 et de la file locale des pièces jointes. Il contrôle l'encodage, le MIME, la limite de 3 Mo, calcule SHA-256 lorsque Web Crypto est disponible, signale les doublons potentiels et inspecte les métadonnées des événements média déjà reçus dans la zone tampon. Un manifeste JSON peut être exporté sans contenu binaire.
+
+Limites : le module ne lit pas les lignes distantes `metier_media_v1_*` de l'ancien `app_sync_state`, ne télécharge aucun objet Storage et ne vérifie donc pas l'intégrité des objets distants. Aucun transfert, déplacement ou nettoyage n'est effectué.
+
+## 8. Ordre de réalisation retenu
 
 1. Valider les policies et le bucket privé en environnement de test.
 2. Développer un adaptateur média isolé qui ne modifie pas `media-sync.js`.
