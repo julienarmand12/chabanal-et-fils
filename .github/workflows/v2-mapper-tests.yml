@@ -18,5 +18,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Check JavaScript syntax
+        run: |
+          node --check sync-v2-delta.js
+          node --check legacy-v2-mapper.js
+          node --check v2-migration-preview.js
       - name: Run read-only mapper tests
         run: node legacy-v2-mapper.test.js
