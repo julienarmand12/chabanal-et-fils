@@ -143,5 +143,6 @@
     mount();
     loadOperationBridge();
     loadInboundStaging();
+    loadMediaInventory();
   }
 })(window);
