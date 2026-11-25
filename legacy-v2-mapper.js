@@ -114,19 +114,27 @@
       const id = String(m.id);
       if (seenModels.has(id)) { errors.push("Identifiant modèle en double : " + id); continue; }
       seenModels.add(id);
-      add(records, "equipment_model", id, m);
+      const { documents = [], ...modelPayload } = m;
+      add(records, "equipment_model", id, modelPayload);
+      if (Array.isArray(documents)) documents.forEach((doc, index) => {
+        if (typeof doc !== "string" || !doc) { errors.push("Document modèle invalide pour " + id); return; }
+        add(records, "media", id + "::model-document::" + index, {
+          owner_type: "equipment_model", owner_id: id, media_type: "document", legacy_index: index, data_url: doc
+        });
+      });
     }
 
     for (const [clientId, value] of Object.entries(assignments)) {
       if (!clientIds.has(clientId)) warnings.push("Attribution liée à un client absent : " + clientId);
       const list = Array.isArray(value) ? value : (value == null ? [] : [value]);
       list.forEach((installation, index) => {
-        if (!installation || typeof installation !== "object") {
-          errors.push("Attribution équipement invalide pour " + clientId); return;
-        }
-        const modelId = installation.modelId || installation.model_id || installation.id || index;
-        add(records, "equipment_installation", clientId + "::" + idPart(modelId) + "::" + index, {
-          client_id: clientId, ...installation
+        const modelId = typeof installation === "string" ? installation :
+          (installation && (installation.modelId || installation.model_id || installation.id));
+        if (!modelId) { errors.push("Attribution équipement invalide pour " + clientId); return; }
+        if (!modelIds.has(String(modelId))) warnings.push("Modèle attribué introuvable : " + modelId + " (client " + clientId + ")");
+        add(records, "equipment_installation", clientId + "::" + idPart(modelId), {
+          client_id: clientId, model_id: String(modelId), legacy_index: index,
+          ...(typeof installation === "object" ? installation : {})
         });
       });
     }
@@ -154,11 +162,14 @@
       const id = String(d.id);
       if (seenDiagnostics.has(id)) { errors.push("Identifiant de marque diagnostic en double : " + id); continue; }
       seenDiagnostics.add(id);
-      add(records, "diagnostic_brand", id, d);
-      // Les documents intégrés restent attachés au payload de la marque jusqu'à migration dédiée du stockage média.
-      if (Array.isArray(d.documents) && d.documents.length) {
-        warnings.push("Documents de diagnostic intégrés au payload de la marque " + id + " : extraction média à prévoir.");
-      }
+      const { documents = [], ...diagnosticPayload } = d;
+      add(records, "diagnostic_brand", id, diagnosticPayload);
+      if (Array.isArray(documents)) documents.forEach((doc, index) => {
+        if (typeof doc !== "string" || !doc) { errors.push("Document diagnostic invalide pour " + id); return; }
+        add(records, "media", id + "::diagnostic-document::" + index, {
+          owner_type: "diagnostic_brand", owner_id: id, media_type: "document", legacy_index: index, data_url: doc
+        });
+      });
     }
 
     recovery.entries.forEach((entry, index) => {
@@ -175,7 +186,7 @@
     // La version applicative et les clés de configuration/session ne sont pas des données métier.
     // Les pièces jointes diagnostiques et le stock n'ont pas de source locale identifiée dans ce fichier.
     warnings.push("Aucune clé de stock n'est présente dans la source index.html analysée : ne pas inventer ni migrer de stock depuis ce fichier.");
-    warnings.push("Les documents/photos de diagnostic doivent être audités séparément avant transfert.");
+    warnings.push("Les pièces jointes média sont transportées comme data URLs dans les enregistrements V2 pour ce premier mapping ; un stockage objet Supabase dédié sera préférable avant migration volumineuse.");
     const counts = records.reduce((out, row) => {
       out[row.entity_type] = (out[row.entity_type] || 0) + 1;
       return out;
