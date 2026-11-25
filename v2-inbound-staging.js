@@ -125,7 +125,17 @@
     await txDone(tx);
     return { cleared: count };
   }
-  async function exportMergePlan() {\n    if (!global.ChabanalV2MergePreview) throw new Error("Préparateur de fusion V2 indisponible.");\n    const plan = global.ChabanalV2MergePreview.mapPlan(await allEvents(), global.localStorage);\n    const blob = new Blob([JSON.stringify(plan, null, 2)], { type: "application/json" });\n    const url = URL.createObjectURL(blob);\n    const a = document.createElement("a");\n    a.href = url; a.download = "chabanal-v2-plan-fusion-a-valider.json";\n    a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);\n    return plan;\n  }\n  async function exportJson() {
+  async function exportMergePlan() {
+    if (!global.ChabanalV2MergePreview) throw new Error("Préparateur de fusion V2 indisponible.");
+    const plan = global.ChabanalV2MergePreview.mapPlan(await allEvents(), global.localStorage);
+    const blob = new Blob([JSON.stringify(plan, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "chabanal-v2-plan-fusion-a-valider.json";
+    a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return plan;
+  }
+  async function exportJson() {
     const events = await allEvents();
     const data = JSON.stringify({ exported_at: new Date().toISOString(), events }, null, 2);
     const blob = new Blob([data], { type: "application/json" });
@@ -173,7 +183,19 @@
       try { const n = await exportJson(); statusLine.textContent = n + " événement(s) exporté(s) en JSON."; }
       catch (error) { statusLine.textContent = "Export impossible : " + error.message; }
     });
-    const planButton = document.createElement("button");\n    planButton.type = "button"; planButton.className = "secondary small";\n    planButton.style.marginLeft = "8px"; planButton.textContent = "Préparer le plan de fusion (sans appliquer)";\n    planButton.addEventListener("click", async () => {\n      planButton.disabled = true;\n      try {\n        const plan = await exportMergePlan();\n        const counts = Object.entries(plan.counts).map(([k,v]) => k + " : " + v).join(" · ");\n        statusLine.textContent = "Plan exporté — " + (counts || "aucune opération") + " · aucune donnée V1 modifiée.";\n      } catch (error) { statusLine.textContent = "Préparation impossible : " + error.message; }\n      finally { planButton.disabled = false; }\n    });\n    const clearButton = document.createElement("button");
+    const planButton = document.createElement("button");
+    planButton.type = "button"; planButton.className = "secondary small";
+    planButton.style.marginLeft = "8px"; planButton.textContent = "Préparer le plan de fusion (sans appliquer)";
+    planButton.addEventListener("click", async () => {
+      planButton.disabled = true;
+      try {
+        const plan = await exportMergePlan();
+        const counts = Object.entries(plan.counts).map(([k,v]) => k + " : " + v).join(" · ");
+        statusLine.textContent = "Plan exporté — " + (counts || "aucune opération") + " · aucune donnée V1 modifiée.";
+      } catch (error) { statusLine.textContent = "Préparation impossible : " + error.message; }
+      finally { planButton.disabled = false; }
+    });
+    const clearButton = document.createElement("button");
     clearButton.type = "button"; clearButton.className = "secondary small";
     clearButton.style.marginLeft = "8px"; clearButton.textContent = "Vider après export";
     clearButton.addEventListener("click", async () => {
