@@ -47,12 +47,12 @@
     localStorage.setItem(INBOX_KEY, serialized);
     return { duplicate: false, count: next.length };
   }
-  async function pull() {
+  async function pull(client) {
     if (busy) throw new Error("Une réception V2 est déjà en cours.");
     if (!global.ChabanalV2DeltaSync) throw new Error("Moteur delta V2 indisponible.");
     busy = true;
     try {
-      const sync = global.ChabanalV2DeltaSync.create();
+      if (!client || typeof client.from !== "function") throw new Error("Client Supabase non fourni. La V1 ne l’expose pas encore aux modules V2 ; aucune réception effectuée.");\n      const sync = global.ChabanalV2DeltaSync.create(client);
       const result = await sync.pullDelta(async event => { stage(event); });
       const meta = { lastPullAt: new Date().toISOString(), cursor: result.cursor, processed: result.processed };
       localStorage.setItem(META_KEY, JSON.stringify(meta));
