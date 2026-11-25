@@ -1,0 +1,22 @@
+name: V2 migration mapper tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "legacy-v2-mapper.js"
+      - "legacy-v2-mapper.test.js"
+      - ".github/workflows/v2-mapper-tests.yml"
+  push:
+    branches: [v2-delta-sync-adapter]
+
+jobs:
+  mapper-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run read-only mapper tests
+        run: node legacy-v2-mapper.test.js
