@@ -55,7 +55,7 @@
       return id;
     }
 
-    async function writeCAS(type, id, payload, deletedAt) {
+    async function writeCAS(type, id, payload, deletedAt, expectedRevision) {
       const current = await client.from("app_v2_records")
         .select("revision").eq("workspace_id", workspaceId)
         .eq("entity_type", type).eq("record_id", id).maybeSingle();
@@ -65,11 +65,18 @@
         payload, deleted_at: deletedAt || null
       };
       if (!current.data) {
+        if (expectedRevision != null) throw new Error("Conflit : la fiche attendue n'existe plus sur le serveur.");
         const inserted = await client.from("app_v2_records").insert(row)
           .select("entity_type,record_id,revision,updated_at,deleted_at").maybeSingle();
         if (inserted.error) throw inserted.error;
         if (!inserted.data) throw new Error("Conflit : l'enregistrement a été créé par un autre appareil.");
         return inserted.data;
+      }
+      if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
+        throw new Error("Révision locale obligatoire pour modifier une fiche existante.");
+      }
+      if (current.data.revision !== expectedRevision) {
+        throw new Error("Conflit : la fiche a été modifiée sur un autre appareil. Synchronisez avant de réessayer.");
       }
       const updated = await client.from("app_v2_records").update(row)
         .eq("workspace_id", workspaceId).eq("entity_type", type)
@@ -80,13 +87,13 @@
       return updated.data;
     }
 
-    async function save(type, id, payload) {
+    async function save(type, id, payload, expectedRevision) {
       assertEntity(type, id, payload);
       await registerDevice();
-      return writeCAS(type, id, payload, null);
+      return writeCAS(type, id, payload, null, expectedRevision);
     }
 
-    async function remove(type, id, tombstone) {
+    async function remove(type, id, tombstone, expectedRevision) {
       if (!ENTITY_TYPES.has(type) || typeof id !== "string" || !id.trim()) {
         throw new Error("Type ou identifiant de suppression invalide");
       }
@@ -95,7 +102,7 @@
       const payload = tombstone && typeof tombstone === "object" ? { ...tombstone } : { id };
       payload.__deleted = true;
       payload.__deleted_at = deletedAt;
-      return writeCAS(type, id, payload, deletedAt);
+      return writeCAS(type, id, payload, deletedAt, expectedRevision);
     }
 
     async function pullDelta(onChange) {
