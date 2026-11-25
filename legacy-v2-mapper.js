@@ -15,7 +15,8 @@
     diagnostics: "metier_diagnostics_marques_v1",
     recovery: "metier_heures_recuperation_v1",
     stockCache: "chabanal_stock_cache_v1",
-    stockPending: "chabanal_stock_pending_v1"
+    stockPending: "chabanal_stock_pending_v1",
+    mediaPending: "chabanal_media_pending_v1"
   });
 
   const ALLOWED = new Set([
@@ -61,6 +62,7 @@
     const recovery = read(storage, KEYS.recovery, { entries: [] });
     const stockCache = read(storage, KEYS.stockCache, {});
     const stockPending = read(storage, KEYS.stockPending, {});
+    const mediaPending = read(storage, KEYS.mediaPending, {});
 
     const errors = [], warnings = [], records = [];
     if (!Array.isArray(clients)) errors.push("La liste des clients n'est pas un tableau.");
@@ -73,6 +75,7 @@
     if (!recovery || typeof recovery !== "object" || !Array.isArray(recovery.entries)) errors.push("Les heures de récupération sont invalides.");
     if (!stockCache || typeof stockCache !== "object" || Array.isArray(stockCache)) errors.push("Le cache du stock est invalide.");
     if (!stockPending || typeof stockPending !== "object" || Array.isArray(stockPending)) errors.push("La file du stock est invalide.");
+    if (!mediaPending || typeof mediaPending !== "object" || Array.isArray(mediaPending)) errors.push("La file des pièces jointes est invalide.");
     if (errors.length) return { ok: false, errors, warnings, counts: {}, records: [] };
 
     const deletedSet = new Set(deleted.map(String));
@@ -104,15 +107,6 @@
         const interventionId = id + "::" + idPart(base) + "::" + occurrence;
         add(records, "intervention", interventionId, { client_id: id, legacy_index: index, ...item });
       });
-      const photoKey = "metier_photos_" + id;
-      const photos = read(storage, photoKey, []);
-      if (!Array.isArray(photos)) errors.push("Photos invalides pour le client " + id);
-      else photos.forEach((photo, index) => {
-        if (typeof photo !== "string" || !photo) { errors.push("Photo invalide pour " + id + " (position " + index + ")"); return; }
-        add(records, "media", id + "::photo::" + index, {
-          owner_type: "client", owner_id: id, media_type: "photo", legacy_index: index, data_url: photo
-        });
-      });
     }
 
     for (const m of models) {
@@ -123,9 +117,12 @@
       const { documents = [], ...modelPayload } = m;
       add(records, "equipment_model", id, modelPayload);
       if (Array.isArray(documents)) documents.forEach((doc, index) => {
-        if (typeof doc !== "string" || !doc) { errors.push("Document modèle invalide pour " + id); return; }
+        if (!doc || typeof doc !== "object" || typeof doc.data !== "string" || !doc.data) {
+          errors.push("Document modèle invalide pour " + id + " (position " + index + ")"); return;
+        }
         add(records, "media", id + "::model-document::" + index, {
-          owner_type: "equipment_model", owner_id: id, media_type: "document", legacy_index: index, data_url: doc
+          owner_type: "equipment_model", owner_id: id, media_type: "document",
+          legacy_index: index, name: doc.name || "Document", mime: doc.type || "application/octet-stream", data_url: doc.data
         });
       });
     }
@@ -149,10 +146,24 @@
       if (!values || typeof values !== "object" || Array.isArray(values)) {
         errors.push("Numéros de série invalides pour " + clientId); continue;
       }
-      for (const [modelId, serialOrMeta] of Object.entries(values)) {
+      const modelKeys = new Set(Object.keys(values).filter(key => !key.startsWith("__year__")));
+      for (const modelId of modelKeys) {
+        const serial = values[modelId];
+        const year = values["__year__" + modelId] || "";
+        if (typeof serial !== "string" && serial != null) {
+          errors.push("Numéro de série invalide pour " + clientId + "/" + modelId); continue;
+        }
         add(records, "equipment_serial", clientId + "::" + idPart(modelId), {
-          client_id: clientId, model_id: modelId, value: serialOrMeta
+          client_id: clientId, model_id: modelId, serial: String(serial || ""), year: String(year || "")
         });
+      }
+      for (const yearKey of Object.keys(values).filter(key => key.startsWith("__year__"))) {
+        const modelId = yearKey.slice("__year__".length);
+        if (!modelKeys.has(modelId)) {
+          add(records, "equipment_serial", clientId + "::" + idPart(modelId), {
+            client_id: clientId, model_id: modelId, serial: "", year: String(values[yearKey] || "")
+          });
+        }
       }
     }
 
@@ -170,12 +181,9 @@
       seenDiagnostics.add(id);
       const { documents = [], ...diagnosticPayload } = d;
       add(records, "diagnostic_brand", id, diagnosticPayload);
-      if (Array.isArray(documents)) documents.forEach((doc, index) => {
-        if (typeof doc !== "string" || !doc) { errors.push("Document diagnostic invalide pour " + id); return; }
-        add(records, "media", id + "::diagnostic-document::" + index, {
-          owner_type: "diagnostic_brand", owner_id: id, media_type: "document", legacy_index: index, data_url: doc
-        });
-      });
+      if (Array.isArray(documents) && documents.length) {
+        warnings.push("Documents intégrés à la marque de diagnostic " + id + " : format à contrôler avant migration.");
+      }
     }
 
     recovery.entries.forEach((entry, index) => {
@@ -205,8 +213,30 @@
       add(records, "stock_item", String(item.kind) + "::" + String(item.id), item);
     }
 
+    // Les pièces jointes du module média sont en attente locale dans une file dédiée.
+    for (const [key, item] of Object.entries(mediaPending)) {
+      if (!item || typeof item !== "object" || !item.id || !item.scope || !item.ownerId) {
+        errors.push("Pièce jointe en attente invalide : " + key); continue;
+      }
+      if (item.deleted) {
+        add(records, "media", String(item.scope) + "::" + String(item.ownerId) + "::" + String(item.id), {
+          id: item.id, scope: item.scope, owner_id: String(item.ownerId), deleted: true, deletedAt: item.deletedAt || null
+        });
+      } else {
+        if (typeof item.data !== "string" || !item.data) { errors.push("Contenu de pièce jointe absent : " + key); continue; }
+        add(records, "media", String(item.scope) + "::" + String(item.ownerId) + "::" + String(item.id), {
+          id: item.id, scope: item.scope, owner_id: String(item.ownerId), code_id: item.codeId || null,
+          kind: item.kind || null, name: item.name || "Document", mime: item.mime || null,
+          data_url: item.data, created_at: item.createdAt || null
+        });
+      }
+    }
+    // Les pièces déjà présentes dans app_sync_state ne sont pas locales : leur migration nécessite un export cloud dédié.
+    warnings.push("Les pièces jointes déjà synchronisées dans l'ancien app_sync_state ne sont pas copiées par ce mapping local ; un transfert cloud-à-cloud séparé sera nécessaire.");
+    if (diagnostics.some(d => Array.isArray(d.documents) && d.documents.length)) {
+      warnings.push("Les documents intégrés aux marques de diagnostic sont conservés dans le payload diagnostic, leur format exact doit être validé.");
+    }
     // La version applicative et les clés de configuration/session ne sont pas des données métier.
-    warnings.push("Les pièces jointes média sont transportées comme data URLs dans les enregistrements V2 pour ce premier mapping ; un stockage objet Supabase dédié sera préférable avant migration volumineuse.");
     const counts = records.reduce((out, row) => {
       out[row.entity_type] = (out[row.entity_type] || 0) + 1;
       return out;
