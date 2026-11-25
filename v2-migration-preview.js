@@ -101,9 +101,19 @@
     mount
   });
 
+  function loadOperationBridge() {
+    if (document.getElementById("v2OperationBridgeScript")) return;
+    const script = document.createElement("script");
+    script.id = "v2OperationBridgeScript";
+    script.src = "./v2-operation-bridge.js?v=20261125-1";
+    script.defer = true;
+    document.head.appendChild(script);
+  }
+
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", mount, { once: true });
+    document.addEventListener("DOMContentLoaded", function () { mount(); loadOperationBridge(); }, { once: true });
   } else {
     mount();
+    loadOperationBridge();
   }
 })(window);
