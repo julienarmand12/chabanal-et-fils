@@ -1,0 +1,16 @@
+/* Chabanal et fils — préparation de transfert média V2.
+ * Le moteur est volontairement en DRY-RUN : aucun accès Storage, aucun write.
+ * L'activation réelle nécessitera un accord séparé et des tests avec un compte de test.
+ */
+(function(g){"use strict";
+const ENABLE_REAL_TRANSFER=false,BUCKET="app-v2-media",MAX=3*1024*1024;
+const DATA=/^data:([^;,]+);base64,([a-z0-9+/=\r\n]+)$/i;
+const ALLOWED=/^(image\/(jpeg|png|webp|gif)|application\/pdf|text\/plain|application\/(msword|vnd\.openxmlformats-officedocument\.[a-z0-9.-]+|vnd\.ms-excel|vnd\.ms-powerpoint|octet-stream))$/i;
+function bytesOf(b64){const s=b64.replace(/\s/g,"");if(!s||s.length%4)throw Error("Base64 invalide.");const n=s.length*3/4-(s.endsWith("==")?2:s.endsWith("=")?1:0);if(!Number.isSafeInteger(n)||n<0)throw Error("Taille binaire invalide.");return n}
+function decode(b64){const raw=g.atob(b64.replace(/\s/g,"")),out=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i);return out}
+async function digest(bytes){if(!g.crypto?.subtle)throw Error("Web Crypto indisponible : SHA-256 obligatoire.");const d=await g.crypto.subtle.digest("SHA-256",bytes);return [...new Uint8Array(d)].map(x=>x.toString(16).padStart(2,"0")).join("")}
+function safe(s){return String(s||"").replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,100)}
+async function prepare(items,workspaceId){if(!Array.isArray(items)||!workspaceId)throw Error("Liste média ou workspace absent.");const rows=[],errors=[];for(let i=0;i<items.length;i++){const x=items[i]||{},m=DATA.exec(String(x.data_url||""));try{if(!m)throw Error("Data URL absente ou invalide.");const mime=m[1].toLowerCase();if(!ALLOWED.test(mime))throw Error("Type MIME non autorisé : "+mime);const size=bytesOf(m[2]);if(size>MAX)throw Error("Fichier supérieur à 3 Mo.");const binary=decode(m[2]);if(binary.byteLength!==size)throw Error("Taille décodée incohérente.");const sha256=await digest(binary);const scope=safe(x.scope||x.owner_type||"unknown"),owner=safe(x.owner_id||"unknown"),id=safe(x.id||("legacy_"+i));const ext=({ "image/jpeg":"jpg","image/png":"png","image/webp":"webp","image/gif":"gif","application/pdf":"pdf","text/plain":"txt" })[mime]||"bin";rows.push({source_id:id,owner_type:scope,owner_id:owner,name:String(x.name||"fichier").slice(0,180),mime,size_bytes:size,sha256,storage_bucket:BUCKET,storage_path:String(workspaceId)+"/"+scope+"/"+owner+"/"+id+"."+ext,action:"copy_then_verify",status:"prêt pour pilote synthétique",binary_bytes:size})}catch(e){errors.push({index:i,source_id:x.id||null,error:e.message})}}return{mode:"dry-run",real_transfer_enabled:ENABLE_REAL_TRANSFER,writes_performed:false,uploads_performed:false,workspace_id:workspaceId,bucket:BUCKET,prepared:rows.length,rejected:errors.length,items:rows,errors}}
+async function execute(){if(!ENABLE_REAL_TRANSFER)throw Error("Transfert réel désactivé : seule la préparation du manifeste est autorisée.");throw Error("Aucun exécuteur réel n'est déployé.");}
+g.ChabanalV2MediaTransfer=Object.freeze({prepare,execute,realTransferEnabled:()=>ENABLE_REAL_TRANSFER});
+})(window);
