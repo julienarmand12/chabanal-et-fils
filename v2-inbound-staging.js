@@ -125,7 +125,7 @@
     await txDone(tx);
     return { cleared: count };
   }
-  async function exportJson() {
+  async function exportMergePlan() {\n    if (!global.ChabanalV2MergePreview) throw new Error("Préparateur de fusion V2 indisponible.");\n    const plan = global.ChabanalV2MergePreview.mapPlan(await allEvents(), global.localStorage);\n    const blob = new Blob([JSON.stringify(plan, null, 2)], { type: "application/json" });\n    const url = URL.createObjectURL(blob);\n    const a = document.createElement("a");\n    a.href = url; a.download = "chabanal-v2-plan-fusion-a-valider.json";\n    a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);\n    return plan;\n  }\n  async function exportJson() {
     const events = await allEvents();
     const data = JSON.stringify({ exported_at: new Date().toISOString(), events }, null, 2);
     const blob = new Blob([data], { type: "application/json" });
@@ -173,14 +173,14 @@
       try { const n = await exportJson(); statusLine.textContent = n + " événement(s) exporté(s) en JSON."; }
       catch (error) { statusLine.textContent = "Export impossible : " + error.message; }
     });
-    const clearButton = document.createElement("button");
+    const planButton = document.createElement("button");\n    planButton.type = "button"; planButton.className = "secondary small";\n    planButton.style.marginLeft = "8px"; planButton.textContent = "Préparer le plan de fusion (sans appliquer)";\n    planButton.addEventListener("click", async () => {\n      planButton.disabled = true;\n      try {\n        const plan = await exportMergePlan();\n        const counts = Object.entries(plan.counts).map(([k,v]) => k + " : " + v).join(" · ");\n        statusLine.textContent = "Plan exporté — " + (counts || "aucune opération") + " · aucune donnée V1 modifiée.";\n      } catch (error) { statusLine.textContent = "Préparation impossible : " + error.message; }\n      finally { planButton.disabled = false; }\n    });\n    const clearButton = document.createElement("button");
     clearButton.type = "button"; clearButton.className = "secondary small";
     clearButton.style.marginLeft = "8px"; clearButton.textContent = "Vider après export";
     clearButton.addEventListener("click", async () => {
       try { const r = await clearAfterExport(); statusLine.textContent = r.cancelled ? "Suppression annulée." : r.cleared + " événement(s) supprimé(s) de la zone tampon."; await refresh(); }
       catch (error) { statusLine.textContent = "Suppression impossible : " + error.message; }
     });
-    panel.append(title, note, statusLine, pullButton, exportButton, clearButton);
+    panel.append(title, note, statusLine, pullButton, exportButton, planButton, clearButton);
     host.appendChild(panel); refresh();
   }
   global.ChabanalV2InboundStaging = Object.freeze({ pull, status, exportJson, clearAfterExport, mount });
