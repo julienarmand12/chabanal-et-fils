@@ -14,7 +14,7 @@
 <div class="panel">
 <h2>1. Connexion au compte de test</h2>
 <p class="muted">Utilise uniquement le compte Auth déjà associé à l'espace de test V2. Ne saisis pas ton mot de passe de production si ce n'est pas le compte de test.</p>
-<label for="email">E-mail du compte autorisé</label><input id="email" type="email" autocomplete="username" value="julien.armand12@gmail.com">
+<label for="email">E-mail du compte autorisé</label><input id="email" type="email" autocomplete="username" placeholder="Adresse e-mail du compte existant">
 <label for="password">Mot de passe (facultatif)</label><input id="password" type="password" autocomplete="current-password">
 <button id="login">Se connecter avec le mot de passe</button>
 <button id="sendOtp" class="secondary">Recevoir un code par e-mail</button>
@@ -74,7 +74,7 @@
   };
   $("sendOtp").onclick = async () => {
     const email = $("email").value.trim().toLowerCase();
-    if(email !== "julien.armand12@gmail.com") { out("Adresse refusée : utilise l'adresse du compte propriétaire déjà associé à l'espace V2.",true); return; }
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { out("Saisis l'adresse e-mail du compte existant.",true); return; }
     $("sendOtp").disabled = true;
     const {error} = await client.auth.signInWithOtp({email,options:{shouldCreateUser:false}});
     $("sendOtp").disabled = false;
@@ -84,7 +84,7 @@
   $("verifyOtp").onclick = async () => {
     const email = $("email").value.trim().toLowerCase();
     const token = $("otp").value.trim();
-    if(email !== "julien.armand12@gmail.com" || !/^\d{6}$/.test(token)) { out("Vérifie l'adresse du compte et saisis le code à 6 chiffres.",true); return; }
+    if(!email || !/^\d{6}$/.test(token)) { out("Vérifie l'adresse du compte et saisis le code à 6 chiffres.",true); return; }
     const {error} = await client.auth.verifyOtp({email,token,type:"email"});
     if(error){out("Code non validé : "+error.message,true);return}
     await refreshAuth();
