@@ -65,6 +65,42 @@
   out.addEventListener("click",async()=>{try{await logout();await refresh();}catch(e){status.textContent="Déconnexion impossible : "+e.message;}});
   row.append(sign,out);box.append(title,note,email,pass,row,status);
   if(host===document.body)host.prepend(box);else host.appendChild(box);
+
+  const tests=document.createElement("div");
+  tests.style.cssText="margin-top:12px;padding-top:12px;border-top:1px solid rgba(120,160,190,.35)";
+  const testTitle=document.createElement("strong");testTitle.textContent="Diagnostic du moteur V2 — espace de test uniquement";
+  const testNote=document.createElement("p");testNote.className="small muted";testNote.textContent="Utilise une fiche technique fictive dédiée. Aucun client ni intervention réelle n'est modifié.";
+  const testRow=document.createElement("div");testRow.style.cssText="display:flex;gap:8px;flex-wrap:wrap";
+  const writeBtn=document.createElement("button");writeBtn.type="button";writeBtn.className="secondary small";writeBtn.textContent="1. Tester l'écriture";
+  const readBtn=document.createElement("button");readBtn.type="button";readBtn.className="secondary small";readBtn.textContent="2. Tester la lecture";
+  const deltaBtn=document.createElement("button");deltaBtn.type="button";deltaBtn.className="secondary small";deltaBtn.textContent="3. Vérifier le journal";
+  const result=document.createElement("p");result.className="small muted";result.style.cssText="margin:8px 0 0;white-space:pre-wrap";
+  const testId="__diagnostic_v2_test2_shared__";
+  async function runTest(button,action){
+   button.disabled=true;result.textContent="Test en cours…";
+   try{
+    const c=await getAuthenticatedClient();if(!c)throw new Error("Connectez-vous d'abord à V2 Test 2.");
+    await c.from("app_v2_devices").upsert({id:"diag-"+(global.crypto?.randomUUID?global.crypto.randomUUID():Date.now()),workspace_id:WORKSPACE,device_label:"Diagnostic V2 Test 2",last_seen_at:new Date().toISOString()},{onConflict:"id"});
+    await action(c);
+   }catch(e){result.textContent="ÉCHEC : "+(e.message||String(e));}
+   finally{button.disabled=false;}
+  }
+  writeBtn.addEventListener("click",()=>runTest(writeBtn,async c=>{
+   const payload={id:testId,diagnostic:true,source:"Chabanal V2 Test 2",message:"Enregistrement fictif de diagnostic",written_at:new Date().toISOString()};
+   const q=await c.from("app_v2_records").upsert({workspace_id:WORKSPACE,entity_type:"notification",record_id:testId,payload,deleted_at:null},{onConflict:"workspace_id,entity_type,record_id"}).select("record_id,revision").single();
+   if(q.error)throw q.error;result.textContent="ÉCRITURE RÉUSSIE\nIdentifiant : "+q.data.record_id+"\nRévision : "+q.data.revision+"\nEnregistrement fictif uniquement.";
+  }));
+  readBtn.addEventListener("click",()=>runTest(readBtn,async c=>{
+   const q=await c.from("app_v2_records").select("record_id,revision,payload,deleted_at").eq("workspace_id",WORKSPACE).eq("entity_type","notification").eq("record_id",testId).maybeSingle();
+   if(q.error)throw q.error;if(!q.data)throw new Error("Aucun enregistrement de diagnostic trouvé. Lancez d'abord le test d'écriture.");
+   result.textContent="LECTURE RÉUSSIE\nIdentifiant : "+q.data.record_id+"\nRévision : "+q.data.revision+"\nContenu : "+(q.data.payload?.message||"inconnu")+"\nSupprimé : "+(q.data.deleted_at?"oui":"non");
+  }));
+  deltaBtn.addEventListener("click",()=>runTest(deltaBtn,async c=>{
+   const q=await c.from("app_v2_change_log").select("seq,operation,revision,changed_at").eq("workspace_id",WORKSPACE).eq("entity_type","notification").eq("record_id",testId).order("seq",{ascending:false}).limit(5);
+   if(q.error)throw q.error;if(!q.data?.length)throw new Error("Aucun événement trouvé. Lancez d'abord le test d'écriture.");
+   result.textContent="JOURNAL V2 ACCESSIBLE\n"+q.data.map(e=>"Séquence "+e.seq+" · "+e.operation+" · révision "+e.revision).join("\n");
+  }));
+  testRow.append(writeBtn,readBtn,deltaBtn);tests.append(testTitle,testNote,testRow,result);box.appendChild(tests);
   refresh();
  }
  global.ChabanalV2Test2=Object.freeze({url:URL,workspaceId:WORKSPACE,storageKey:STORAGE_KEY,getClient,getAuthenticatedClient,login,logout,session,mount});
