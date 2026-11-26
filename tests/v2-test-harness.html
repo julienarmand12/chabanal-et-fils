@@ -13,15 +13,15 @@
 <div class="warning"><strong>ENVIRONNEMENT DE TEST UNIQUEMENT.</strong><br>Ce banc se connecte au projet Supabase « Test » (nldylpelvifrpoyphgue), jamais au projet principal. Il ne lit ni ne modifie les données V1. Il crée uniquement une fiche synthétique V2 préfixée TEST et la supprime logiquement à la fin.</div>
 <div class="panel">
 <h2>1. Connexion au compte de test</h2>
-<p class="muted">Utilise uniquement le compte Auth déjà associé à l'espace de test V2. Ne saisis pas ton mot de passe de production si ce n'est pas le compte de test.</p>
+<p class="muted">Utilise uniquement le compte Auth déjà associé à l'espace de test V2. Aucun nouveau compte ne sera créé.</p>
 <label for="email">E-mail du compte autorisé</label><input id="email" type="email" autocomplete="username" placeholder="Adresse e-mail du compte existant">
 <label for="password">Mot de passe (facultatif)</label><input id="password" type="password" autocomplete="current-password">
 <button id="login">Se connecter avec le mot de passe</button>
-<button id="sendOtp" class="secondary">Recevoir un code par e-mail</button>
-<label for="otp">Code à 6 chiffres reçu par e-mail</label><input id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456">
-<button id="verifyOtp">Valider le code</button>
+<button id="sendOtp" class="secondary">Recevoir un lien magique par e-mail</button>
+<label for="callbackUrl">URL après avoir cliqué sur le lien reçu</label><input id="callbackUrl" type="url" autocomplete="off" placeholder="Colle ici l'adresse affichée après le clic dans l'e-mail">
+<button id="completeMagicLink">Finaliser la connexion</button>
 <button id="logout" class="secondary" disabled>Se déconnecter</button>
-<p class="muted">Le code est envoyé uniquement à l'adresse du compte existant. Aucun nouveau compte ne sera créé.</p>
+<p class="muted">Après réception, ouvre le lien dans le même navigateur que celui utilisé pour ce fichier. Une fois la page de redirection affichée, copie son adresse complète depuis la barre d'adresse, reviens ici et colle-la dans le champ ci-dessus. Ne partage jamais ce lien : il donne accès à ton compte.</p>
 <p id="authState" class="muted">Non connecté.</p>
 </div>
 <div class="panel">
@@ -44,7 +44,7 @@
   const WORKSPACE = "ad49e922-7fd9-447d-b5df-0e5de2ce2554";
   const EXPECTED_USER = "560058e6-bc5c-4fff-ae80-562cc89b64bb";
   const { createClient } = window.supabase;
-  const client = createClient(URL, KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } });
+  const client = createClient(URL, KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, flowType: "pkce" } });
   const $ = id => document.getElementById(id);
   const out = (value, error=false) => { $("output").textContent = typeof value === "string" ? value : JSON.stringify(value,null,2); $("output").className = error ? "bad" : "ok"; };
   const deviceKey = "chabanal_v2_test_device_id";
@@ -61,7 +61,7 @@
     $("authState").className = valid ? "ok" : "bad";
     $("login").disabled = !!currentUser;
     $("sendOtp").disabled = !!currentUser;
-    $("verifyOtp").disabled = !!currentUser;
+    $("completeMagicLink").disabled = !!currentUser;
     $("logout").disabled = !currentUser;
     ["status","run","pull"].forEach(id => $(id).disabled = !valid);
     if(currentUser && !valid) out("Connexion refusée : ce compte n'est pas propriétaire de l'espace de test. Aucun accès aux données V2 n'est accordé.",true);
@@ -78,17 +78,31 @@
     $("sendOtp").disabled = true;
     const {error} = await client.auth.signInWithOtp({email,options:{shouldCreateUser:false}});
     $("sendOtp").disabled = false;
-    if(error){out("Impossible d'envoyer le code : "+error.message,true);return}
-    out("Code envoyé à "+email+". Consulte ta boîte de réception et les courriers indésirables, puis saisis le code à 6 chiffres ici.");
+    if(error){out("Impossible d'envoyer le lien : "+error.message,true);return}
+    out("Lien magique envoyé à "+email+". Ouvre-le dans le même navigateur, puis copie l'URL de redirection complète et colle-la dans le champ prévu ici.");
   };
-  $("verifyOtp").onclick = async () => {
-    const email = $("email").value.trim().toLowerCase();
-    const token = $("otp").value.trim();
-    if(!email || !/^\d{6}$/.test(token)) { out("Vérifie l'adresse du compte et saisis le code à 6 chiffres.",true); return; }
-    const {error} = await client.auth.verifyOtp({email,token,type:"email"});
-    if(error){out("Code non validé : "+error.message,true);return}
-    await refreshAuth();
-    out("Connexion par code confirmée. Projet TEST uniquement.");
+  $("completeMagicLink").onclick = async () => {
+    const raw = $("callbackUrl").value.trim();
+    if(!raw){out("Colle d'abord l'URL complète affichée après le clic sur le lien reçu.",true);return}
+    let parsed;
+    try { parsed = new URL(raw); } catch(e) { out("Cette adresse ne semble pas être une URL complète.",true); return; }
+    const code = parsed.searchParams.get("code");
+    const hash = new URLSearchParams(parsed.hash.replace(/^#/,""));
+    let error = null;
+    if(code) {
+      const result = await client.auth.exchangeCodeForSession(code);
+      error = result.error;
+    } else {
+      const access_token = hash.get("access_token");
+      const refresh_token = hash.get("refresh_token");
+      if(!access_token || !refresh_token) { out("Aucun code de connexion ni jeton de session trouvé dans cette URL. Copie l'adresse complète de la page après le clic sur le lien.",true); return; }
+      const result = await client.auth.setSession({access_token,refresh_token});
+      error = result.error;
+    }
+    if(error){out("Impossible de finaliser la connexion : "+error.message,true);return}
+    const valid = await refreshAuth();
+    if(valid) out("Connexion par lien magique confirmée. Compte autorisé, projet TEST uniquement.");
+    else out("Le lien a été validé, mais le compte connecté n'est pas celui autorisé pour cet espace de test.",true);
   };
   $("logout").onclick = async () => { const {error}=await client.auth.signOut(); if(error){out(error.message,true);return} await refreshAuth(); out("Déconnecté."); };
   client.auth.onAuthStateChange(() => { setTimeout(refreshAuth,0); });
