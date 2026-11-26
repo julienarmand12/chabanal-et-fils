@@ -80,7 +80,7 @@
    button.disabled=true;result.textContent="Test en cours…";
    try{
     const c=await getAuthenticatedClient();if(!c)throw new Error("Connectez-vous d'abord à V2 Test 2.");
-    await c.from("app_v2_devices").upsert({id:"diag-"+(global.crypto?.randomUUID?global.crypto.randomUUID():Date.now()),workspace_id:WORKSPACE,device_label:"Diagnostic V2 Test 2",last_seen_at:new Date().toISOString()},{onConflict:"id"});
+    const deviceResult=await c.from("app_v2_devices").upsert({id:(global.crypto&&global.crypto.randomUUID?global.crypto.randomUUID():"00000000-0000-4000-8000-"+String(Date.now()).slice(-12).padStart(12,"0")),workspace_id:WORKSPACE,device_label:"Diagnostic V2 Test 2",last_seen_at:new Date().toISOString()},{onConflict:"id"});if(deviceResult.error)throw deviceResult.error;
     await action(c);
    }catch(e){result.textContent="ÉCHEC : "+(e.message||String(e));}
    finally{button.disabled=false;}
