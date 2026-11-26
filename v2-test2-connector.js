@@ -100,7 +100,27 @@
    if(q.error)throw q.error;if(!q.data?.length)throw new Error("Aucun événement trouvé. Lancez d'abord le test d'écriture.");
    result.textContent="JOURNAL V2 ACCESSIBLE\n"+q.data.map(e=>"Séquence "+e.seq+" · "+e.operation+" · révision "+e.revision).join("\n");
   }));
-  testRow.append(writeBtn,readBtn,deltaBtn);tests.append(testTitle,testNote,testRow,result);box.appendChild(tests);
+  const changeBtn=document.createElement("button");changeBtn.type="button";changeBtn.className="secondary small";changeBtn.textContent="4. Créer une modification test";
+  const cursorLabel=document.createElement("label");cursorLabel.className="small muted";cursorLabel.textContent="Lire les changements après la séquence : ";
+  const cursorInput=document.createElement("input");cursorInput.type="number";cursorInput.min="0";cursorInput.value="10";cursorInput.style.cssText="width:82px;padding:7px;margin-left:6px";
+  const pullBtn=document.createElement("button");pullBtn.type="button";pullBtn.className="secondary small";pullBtn.textContent="5. Lire les deltas";
+  changeBtn.addEventListener("click",()=>runTest(changeBtn,async c=>{
+   const current=await c.from("app_v2_records").select("payload,revision").eq("workspace_id",WORKSPACE).eq("entity_type","notification").eq("record_id",testId).maybeSingle();
+   if(current.error)throw current.error;if(!current.data)throw new Error("Enregistrement de diagnostic absent. Lancez d'abord le test d'écriture.");
+   const payload={...(current.data.payload||{}),message:"Modification de test depuis cet appareil",last_modified_by_device:true,modified_at:new Date().toISOString()};
+   const q=await c.from("app_v2_records").update({payload,deleted_at:null}).eq("workspace_id",WORKSPACE).eq("entity_type","notification").eq("record_id",testId).select("record_id,revision").single();
+   if(q.error)throw q.error;result.textContent="MODIFICATION TEST RÉUSSIE\\nIdentifiant : "+q.data.record_id+"\\nNouvelle révision : "+q.data.revision+"\\nUne modification a été envoyée au journal V2.";
+  }));
+  pullBtn.addEventListener("click",()=>runTest(pullBtn,async c=>{
+   const cursor=Number(cursorInput.value);if(!Number.isSafeInteger(cursor)||cursor<0)throw new Error("Saisissez une séquence de départ valide.");
+   const q=await c.from("app_v2_change_log").select("seq,operation,revision,entity_type,record_id,changed_at").eq("workspace_id",WORKSPACE).gt("seq",cursor).order("seq",{ascending:true}).limit(50);
+   if(q.error)throw q.error;
+   const events=(q.data||[]).filter(e=>e.record_id===testId);
+   if(!events.length)throw new Error("Aucun changement trouvé pour la fiche test après la séquence "+cursor+". Vérifiez qu'un autre téléphone a d'abord créé une modification.");
+   result.textContent="LECTURE DELTA RÉUSSIE\\nDepuis la séquence : "+cursor+"\\n"+events.map(e=>"Séquence "+e.seq+" · "+e.operation+" · révision "+e.revision).join("\\n")+"\\n\\nLe téléphone a récupéré les événements du journal après le curseur indiqué.";
+  }));
+  cursorLabel.appendChild(cursorInput);
+  testRow.append(writeBtn,readBtn,deltaBtn,changeBtn,pullBtn,cursorLabel);tests.append(testTitle,testNote,testRow,result);box.appendChild(tests);
   refresh();
  }
  global.ChabanalV2Test2=Object.freeze({url:URL,workspaceId:WORKSPACE,storageKey:STORAGE_KEY,getClient,getAuthenticatedClient,login,logout,session,mount});
