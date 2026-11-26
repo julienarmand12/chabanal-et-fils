@@ -84,7 +84,7 @@
   $("verifyOtp").onclick = async () => {
     const email = $("email").value.trim().toLowerCase();
     const token = $("otp").value.trim();
-    if(email !== "julien.armand12@gmail.com" || !/^\\d{6}$/.test(token)) { out("Vérifie l'adresse du compte et saisis le code à 6 chiffres.",true); return; }
+    if(email !== "julien.armand12@gmail.com" || !/^\d{6}$/.test(token)) { out("Vérifie l'adresse du compte et saisis le code à 6 chiffres.",true); return; }
     const {error} = await client.auth.verifyOtp({email,token,type:"email"});
     if(error){out("Code non validé : "+error.message,true);return}
     await refreshAuth();
