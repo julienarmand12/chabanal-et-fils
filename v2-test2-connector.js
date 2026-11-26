@@ -120,7 +120,24 @@
    result.textContent="LECTURE DELTA RÉUSSIE\\nDepuis la séquence : "+cursor+"\\n"+events.map(e=>"Séquence "+e.seq+" · "+e.operation+" · révision "+e.revision).join("\\n")+"\\n\\nLe téléphone a récupéré les événements du journal après le curseur indiqué.";
   }));
   cursorLabel.appendChild(cursorInput);
-  testRow.append(writeBtn,readBtn,deltaBtn,changeBtn,pullBtn,cursorLabel);tests.append(testTitle,testNote,testRow,result);box.appendChild(tests);
+  const auditBtn=document.createElement("button");auditBtn.type="button";auditBtn.className="secondary small";auditBtn.textContent="6. Auditer les données locales (lecture seule)";
+  auditBtn.addEventListener("click",()=>{
+   auditBtn.disabled=true;result.textContent="Inventaire local en cours…";
+   try{
+    if(!global.ChabanalV2MigrationPreview||typeof global.ChabanalV2MigrationPreview.run!=="function")throw new Error("Module d'inventaire V2 indisponible sur cette version.");
+    const report=global.ChabanalV2MigrationPreview.run();
+    const counts=Object.entries(report.counts||{}).map(([k,v])=>k+" : "+v).join("\\n");
+    result.textContent=(report.ok?"AUDIT LOCAL TERMINÉ — LECTURE SEULE":"AUDIT LOCAL BLOQUÉ — AUCUN ENVOI")+
+     "\\nEnregistrements détectés : "+report.totalRecords+
+     "\\nTaille estimée : "+Number(report.approximatePayloadBytes||0).toLocaleString("fr-FR")+" octets"+
+     (counts?"\\n\\nRépartition :\\n"+counts:"")+
+     (report.errors?.length?"\\n\\nErreurs :\\n"+report.errors.join("\\n"):"")+
+     (report.warnings?.length?"\\n\\nPoints à traiter :\\n"+report.warnings.join("\\n"):"")+
+     "\\n\\nAucune donnée envoyée ou modifiée.";
+   }catch(e){result.textContent="AUDIT IMPOSSIBLE : "+e.message;}
+   finally{auditBtn.disabled=false;}
+  });
+  testRow.append(writeBtn,readBtn,deltaBtn,changeBtn,pullBtn,auditBtn,cursorLabel);tests.append(testTitle,testNote,testRow,result);box.appendChild(tests);
   refresh();
  }
  global.ChabanalV2Test2=Object.freeze({url:URL,workspaceId:WORKSPACE,storageKey:STORAGE_KEY,getClient,getAuthenticatedClient,login,logout,session,mount});
