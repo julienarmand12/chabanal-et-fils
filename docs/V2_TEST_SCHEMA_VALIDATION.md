@@ -30,6 +30,10 @@ Les fonctions de déclenchement sont placées dans le schéma non exposé `priva
 
 Ces tests SQL simulent le contexte Auth/RLS au niveau PostgreSQL. Ils ne remplacent pas encore un test HTTP/Data API avec une vraie session Auth ni un test réel sur deux téléphones.
 
+## Validation automatisée du code
+
+Le workflow GitHub Actions **V2 progressive integration preview**, run #4, est terminé avec succès : syntaxe de tous les modules V2, tests du mapper, simulation delta à deux appareils et cinq tests du transfert média simulé (5/5 réussis).
+
 ## Garde-fous inchangés
 
 - Pont sortant V1 → V2 désactivé par défaut.
