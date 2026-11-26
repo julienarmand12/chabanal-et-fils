@@ -10,12 +10,14 @@ const crypto = require("node:crypto");
 const path = require("node:path");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "v2-media-transfer.js"), "utf8");
+const mockDocument = { readyState: "loading", addEventListener() {} };
 const sandbox = {
   window: {
     atob: (value) => Buffer.from(value, "base64").toString("binary"),
     crypto: crypto.webcrypto,
-    document: { readyState: "loading", addEventListener() {} }
+    document: mockDocument
   },
+  document: mockDocument,
   Uint8Array, Blob, URL, setTimeout, console
 };
 vm.runInNewContext(source, sandbox, { filename: "v2-media-transfer.js" });
