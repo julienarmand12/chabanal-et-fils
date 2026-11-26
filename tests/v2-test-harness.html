@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Chabanal — Banc d'essai V2 (TEST uniquement)</title>
+<title>Chabanal — Banc d'essai V2 (TEST 2 uniquement)</title>
 <style>
 :root{color-scheme:dark;font:16px system-ui;background:#111827;color:#e5e7eb}body{max-width:760px;margin:0 auto;padding:22px}h1{font-size:1.45rem}h2{font-size:1.05rem;margin-top:24px}.warning{background:#422006;border:1px solid #92400e;padding:12px;border-radius:10px}.panel{background:#1f2937;padding:16px;border-radius:12px;margin:14px 0}label{display:block;margin:10px 0 5px}input{width:100%;box-sizing:border-box;padding:11px;border-radius:8px;border:1px solid #4b5563;background:#111827;color:#fff}button{padding:11px 15px;border:0;border-radius:8px;background:#2563eb;color:white;font-weight:600;margin:8px 8px 0 0}button.secondary{background:#4b5563}button.danger{background:#9f1239}button:disabled{opacity:.5}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#030712;padding:12px;border-radius:8px;min-height:90px}.muted{color:#9ca3af;font-size:.9rem}.ok{color:#86efac}.bad{color:#fca5a5}
 </style>
@@ -10,7 +10,7 @@
 </head>
 <body>
 <h1>Chabanal et fils — banc d'essai V2</h1>
-<div class="warning"><strong>ENVIRONNEMENT DE TEST UNIQUEMENT.</strong><br>Ce banc se connecte au projet Supabase « Test » (nldylpelvifrpoyphgue), jamais au projet principal. Il ne lit ni ne modifie les données V1. Il crée uniquement une fiche synthétique V2 préfixée TEST et la supprime logiquement à la fin.</div>
+<div class="warning"><strong>ENVIRONNEMENT DE TEST UNIQUEMENT.</strong><br>Ce banc se connecte exclusivement au projet Supabase « Chabanal et fils — Test 2 » (ilwqadpxlooxjptgpbgg). Il ne lit ni ne modifie les données V1, l'ancien projet Test ou la production. Il crée uniquement une fiche synthétique V2 préfixée TEST et la supprime logiquement à la fin.</div>
 <div class="panel">
 <h2>1. Connexion au compte de test</h2>
 <p class="muted">Utilise uniquement le compte Auth déjà associé à l'espace de test V2. Aucun nouveau compte ne sera créé.</p>
@@ -39,10 +39,10 @@
 </div>
 <script>
 (() => {
-  const URL = "https://nldylpelvifrpoyphgue.supabase.co";
-  const KEY = "sb_publishable_hgSRXk-Gg7N0hh7LQdQ77A_yNx07EQF";
-  const WORKSPACE = "ad49e922-7fd9-447d-b5df-0e5de2ce2554";
-  const EXPECTED_USER = "560058e6-bc5c-4fff-ae80-562cc89b64bb";
+  const URL = "https://ilwqadpxlooxjptgpbgg.supabase.co";
+  const KEY = "sb_publishable_9tHsm8gMyTcjrVEHHhmEfA_m7bnG-FJ";
+  const WORKSPACE = "2d32b34b-66d8-416b-a369-37f564eb7c99";
+  const EXPECTED_USER = "f0b39c42-6d61-4f5a-90ad-c009c9914736";
   const { createClient } = window.supabase;
   const client = createClient(URL, KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, flowType: "pkce" } });
   const $ = id => document.getElementById(id);
@@ -57,7 +57,7 @@
     const {data:{session}} = await client.auth.getSession();
     currentUser = session?.user || null;
     const valid = !!currentUser && currentUser.id === EXPECTED_USER;
-    $("authState").textContent = currentUser ? "Connecté : "+currentUser.email+" — "+(valid ? "compte de test autorisé" : "compte non autorisé pour cet espace") : "Non connecté.";
+    $("authState").textContent = currentUser ? "Connecté : "+currentUser.email+" — "+(valid ? "compte de test Test 2 autorisé" : "compte non autorisé pour Test 2") : "Non connecté.";
     $("authState").className = valid ? "ok" : "bad";
     $("login").disabled = !!currentUser;
     $("sendOtp").disabled = !!currentUser;
@@ -70,7 +70,7 @@
   $("login").onclick = async () => {
     const {error} = await client.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});
     if(error){out("Échec de connexion : "+error.message,true);return}
-    await refreshAuth(); out("Session Auth ouverte. Projet TEST uniquement.");
+    await refreshAuth(); out("Session Auth ouverte. Projet TEST 2 uniquement.");
   };
   $("sendOtp").onclick = async () => {
     const email = $("email").value.trim().toLowerCase();
@@ -111,7 +111,7 @@
       const {data,error}=await client.from("app_v2_workspaces").select("id,name,change_seq").eq("id",WORKSPACE).single();
       if(error) throw error;
       out({resultat:"API + RLS accessibles",workspace:data,device_id:deviceId(),local_cursor:Number(localStorage.getItem(cursorKey)||0)});
-    } catch(e){out("Échec de lecture API/RLS : "+e.message+"\nVérifie que les tables sont exposées dans les paramètres Data API du projet Test et que la session appartient au compte autorisé.",true)}
+    } catch(e){out("Échec de lecture API/RLS : "+e.message+"\nVérifie que les tables sont exposées dans les paramètres Data API du projet Test 2 et que la session appartient au compte autorisé.",true)}
   };
   $("run").onclick = async () => {
     $("run").disabled = true;
@@ -143,8 +143,8 @@
       if(cursor.error) throw cursor.error;
       localStorage.setItem(cursorKey,String(maxSeq));
       latestRecord = id;
-      out({statut:"SUCCÈS — appels réels Auth + Data API + RLS",projet:"Supabase Test uniquement",utilisateur:currentUser.id,device_id:device,record_id:id,revisions:[1,2,3],journal:finalLog.data,curseur:maxSeq,suppression:"logique confirmée",note:"La fiche synthétique reste présente comme tombstone pour que le second appareil puisse recevoir l'événement delete."});
-    } catch(e) { out("Test interrompu : "+e.message+"\nSi l'insertion a réussi avant l'erreur, une fiche TEST peut rester dans le projet Test; aucune donnée V1 ou production n'est touchée.",true); }
+      out({statut:"SUCCÈS — appels réels Auth + Data API + RLS",projet:"Supabase Test 2 uniquement",utilisateur:currentUser.id,device_id:device,record_id:id,revisions:[1,2,3],journal:finalLog.data,curseur:maxSeq,suppression:"logique confirmée",note:"La fiche synthétique reste présente comme tombstone pour que le second appareil puisse recevoir l'événement delete."});
+    } catch(e) { out("Test interrompu : "+e.message+"\nSi l'insertion a réussi avant l'erreur, une fiche TEST peut rester dans le projet Test; aucune donnée V1, ancien Test ou production n'est touchée.",true); }
     finally { $("run").disabled = false; }
   };
   $("pull").onclick = async () => {
