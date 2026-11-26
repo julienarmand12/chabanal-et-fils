@@ -14,9 +14,14 @@
 <div class="panel">
 <h2>1. Connexion au compte de test</h2>
 <p class="muted">Utilise uniquement le compte Auth déjà associé à l'espace de test V2. Ne saisis pas ton mot de passe de production si ce n'est pas le compte de test.</p>
-<label for="email">E-mail du compte de test</label><input id="email" type="email" autocomplete="username">
-<label for="password">Mot de passe</label><input id="password" type="password" autocomplete="current-password">
-<button id="login">Se connecter</button><button id="logout" class="secondary" disabled>Se déconnecter</button>
+<label for="email">E-mail du compte autorisé</label><input id="email" type="email" autocomplete="username" value="julien.armand12@gmail.com">
+<label for="password">Mot de passe (facultatif)</label><input id="password" type="password" autocomplete="current-password">
+<button id="login">Se connecter avec le mot de passe</button>
+<button id="sendOtp" class="secondary">Recevoir un code par e-mail</button>
+<label for="otp">Code à 6 chiffres reçu par e-mail</label><input id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456">
+<button id="verifyOtp">Valider le code</button>
+<button id="logout" class="secondary" disabled>Se déconnecter</button>
+<p class="muted">Le code est envoyé uniquement à l'adresse du compte existant. Aucun nouveau compte ne sera créé.</p>
 <p id="authState" class="muted">Non connecté.</p>
 </div>
 <div class="panel">
@@ -55,6 +60,8 @@
     $("authState").textContent = currentUser ? "Connecté : "+currentUser.email+" — "+(valid ? "compte de test autorisé" : "compte non autorisé pour cet espace") : "Non connecté.";
     $("authState").className = valid ? "ok" : "bad";
     $("login").disabled = !!currentUser;
+    $("sendOtp").disabled = !!currentUser;
+    $("verifyOtp").disabled = !!currentUser;
     $("logout").disabled = !currentUser;
     ["status","run","pull"].forEach(id => $(id).disabled = !valid);
     if(currentUser && !valid) out("Connexion refusée : ce compte n'est pas propriétaire de l'espace de test. Aucun accès aux données V2 n'est accordé.",true);
@@ -64,6 +71,24 @@
     const {error} = await client.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});
     if(error){out("Échec de connexion : "+error.message,true);return}
     await refreshAuth(); out("Session Auth ouverte. Projet TEST uniquement.");
+  };
+  $("sendOtp").onclick = async () => {
+    const email = $("email").value.trim().toLowerCase();
+    if(email !== "julien.armand12@gmail.com") { out("Adresse refusée : utilise l'adresse du compte propriétaire déjà associé à l'espace V2.",true); return; }
+    $("sendOtp").disabled = true;
+    const {error} = await client.auth.signInWithOtp({email,options:{shouldCreateUser:false}});
+    $("sendOtp").disabled = false;
+    if(error){out("Impossible d'envoyer le code : "+error.message,true);return}
+    out("Code envoyé à "+email+". Consulte ta boîte de réception et les courriers indésirables, puis saisis le code à 6 chiffres ici.");
+  };
+  $("verifyOtp").onclick = async () => {
+    const email = $("email").value.trim().toLowerCase();
+    const token = $("otp").value.trim();
+    if(email !== "julien.armand12@gmail.com" || !/^\\d{6}$/.test(token)) { out("Vérifie l'adresse du compte et saisis le code à 6 chiffres.",true); return; }
+    const {error} = await client.auth.verifyOtp({email,token,type:"email"});
+    if(error){out("Code non validé : "+error.message,true);return}
+    await refreshAuth();
+    out("Connexion par code confirmée. Projet TEST uniquement.");
   };
   $("logout").onclick = async () => { const {error}=await client.auth.signOut(); if(error){out(error.message,true);return} await refreshAuth(); out("Déconnecté."); };
   client.auth.onAuthStateChange(() => { setTimeout(refreshAuth,0); });
