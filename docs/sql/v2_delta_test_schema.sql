@@ -52,6 +52,10 @@ create table public.app_v2_change_log (
 );
 create index app_v2_change_log_workspace_seq_idx
   on public.app_v2_change_log (workspace_id, seq);
+create index app_v2_workspaces_owner_id_idx
+  on public.app_v2_workspaces(owner_id);
+create index app_v2_records_updated_by_idx
+  on public.app_v2_records(updated_by);
 
 create table public.app_v2_sync_cursors (
   workspace_id uuid not null,
