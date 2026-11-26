@@ -122,7 +122,25 @@ Un test est réussi uniquement si les données finales concordent sur A, B et le
 - Écarts observés :
 - Décision : accepté / refusé / à corriger.
 
-## 7. Ordre de réalisation retenu
+## 7. Inventaire média local — implémenté en prévisualisation
+
+Le module `v2-media-inventory.js` analyse en lecture seule les Data URL issues du mapper V1 et de la file locale des pièces jointes. Il contrôle l'encodage, le MIME, la limite de 3 Mo, calcule SHA-256 lorsque Web Crypto est disponible, signale les doublons potentiels et inspecte les métadonnées des événements média déjà reçus dans la zone tampon. Un manifeste JSON peut être exporté sans contenu binaire.
+
+Limites : le module ne lit pas les lignes distantes `metier_media_v1_*` de l'ancien `app_sync_state`, ne télécharge aucun objet Storage et ne vérifie donc pas l'intégrité des objets distants. Aucun transfert, déplacement ou nettoyage n'est effectué.
+
+## 8. Préparation du transfert média — implémentée en dry-run
+
+Le module `v2-media-transfer.js` prépare un manifeste de copie à partir des médias locaux issus du mapper :
+- validation stricte de la Data URL, du MIME autorisé et de la taille (3 Mo maximum) ;
+- décodage binaire et calcul SHA-256 obligatoire ;
+- préparation du bucket cible privé `app-v2-media` et du chemin déterministe workspace/type/propriétaire/média ;
+- export du manifeste JSON et liste des éléments rejetés.
+
+Le bouton est intégré au panneau de prévisualisation. **Le transfert réel est verrouillé dans le code** (`ENABLE_REAL_TRANSFER=false`) : la fonction d'exécution refuse de démarrer. Aucun appel Storage, aucune écriture V2 et aucune modification V1 ne sont possibles via ce module à ce stade. Le manifeste ne contient pas les octets ni les Data URL, seulement les métadonnées et empreintes.
+
+La documentation Supabase confirme qu'un bucket privé impose les contrôles RLS aussi bien en lecture qu'en écriture ; le téléchargement privé se fait via le SDK authentifié ou une URL signée temporaire. L'upload standard documenté permet de désactiver l'écrasement avec `upsert:false`. Ces règles devront être respectées lors de l'implémentation réelle.
+
+## 9. Ordre de réalisation retenu
 
 1. Valider les policies et le bucket privé en environnement de test.
 2. Développer un adaptateur média isolé qui ne modifie pas `media-sync.js`.
