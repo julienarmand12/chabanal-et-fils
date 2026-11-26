@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chabanal — Banc d'essai V2 (TEST uniquement)</title>
+<style>
+:root{color-scheme:dark;font:16px system-ui;background:#111827;color:#e5e7eb}body{max-width:760px;margin:0 auto;padding:22px}h1{font-size:1.45rem}h2{font-size:1.05rem;margin-top:24px}.warning{background:#422006;border:1px solid #92400e;padding:12px;border-radius:10px}.panel{background:#1f2937;padding:16px;border-radius:12px;margin:14px 0}label{display:block;margin:10px 0 5px}input{width:100%;box-sizing:border-box;padding:11px;border-radius:8px;border:1px solid #4b5563;background:#111827;color:#fff}button{padding:11px 15px;border:0;border-radius:8px;background:#2563eb;color:white;font-weight:600;margin:8px 8px 0 0}button.secondary{background:#4b5563}button.danger{background:#9f1239}button:disabled{opacity:.5}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#030712;padding:12px;border-radius:8px;min-height:90px}.muted{color:#9ca3af;font-size:.9rem}.ok{color:#86efac}.bad{color:#fca5a5}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4"></script>
+</head>
+<body>
+<h1>Chabanal et fils — banc d'essai V2</h1>
+<div class="warning"><strong>ENVIRONNEMENT DE TEST UNIQUEMENT.</strong><br>Ce banc se connecte au projet Supabase « Test » (nldylpelvifrpoyphgue), jamais au projet principal. Il ne lit ni ne modifie les données V1. Il crée uniquement une fiche synthétique V2 préfixée TEST et la supprime logiquement à la fin.</div>
+<div class="panel">
+<h2>1. Connexion au compte de test</h2>
+<p class="muted">Utilise uniquement le compte Auth déjà associé à l'espace de test V2. Ne saisis pas ton mot de passe de production si ce n'est pas le compte de test.</p>
+<label for="email">E-mail du compte de test</label><input id="email" type="email" autocomplete="username">
+<label for="password">Mot de passe</label><input id="password" type="password" autocomplete="current-password">
+<button id="login">Se connecter</button><button id="logout" class="secondary" disabled>Se déconnecter</button>
+<p id="authState" class="muted">Non connecté.</p>
+</div>
+<div class="panel">
+<h2>2. Vérification réelle de l'API</h2>
+<p class="muted">Le test vérifie l'identité Auth, la lecture RLS de l'espace, l'inscription de l'appareil, la création et la révision d'une fiche synthétique, le journal delta, puis la suppression logique et le curseur.</p>
+<button id="status" disabled>Vérifier l'accès et l'espace</button>
+<button id="run" disabled>Exécuter le test API complet</button>
+<button id="pull" disabled>Lire les changements (test 2e appareil)</button>
+<pre id="output">En attente de connexion.</pre>
+</div>
+<div class="panel">
+<h2>3. Test sur deux téléphones</h2>
+<ol><li>Connecte ce téléphone au compte de test et exécute le test API complet.</li><li>Ouvre exactement ce même fichier sur le deuxième téléphone et connecte le même compte de test.</li><li>Sur le deuxième téléphone, appuie sur « Lire les changements » : il doit voir les événements du premier appareil, avec un identifiant d'appareil différent.</li></ol>
+<p class="muted">Chaque navigateur conserve son propre identifiant d'appareil et son curseur. Ne supprime pas les données du navigateur pendant le test.</p>
+</div>
+<script>
+(() => {
+  const URL = "https://nldylpelvifrpoyphgue.supabase.co";
+  const KEY = "sb_publishable_hgSRXk-Gg7N0hh7LQdQ77A_yNx07EQF";
+  const WORKSPACE = "ad49e922-7fd9-447d-b5df-0e5de2ce2554";
+  const EXPECTED_USER = "560058e6-bc5c-4fff-ae80-562cc89b64bb";
+  const { createClient } = window.supabase;
+  const client = createClient(URL, KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } });
+  const $ = id => document.getElementById(id);
+  const out = (value, error=false) => { $("output").textContent = typeof value === "string" ? value : JSON.stringify(value,null,2); $("output").className = error ? "bad" : "ok"; };
+  const deviceKey = "chabanal_v2_test_device_id";
+  const cursorKey = "chabanal_v2_test_cursor";
+  const uuid = () => crypto.randomUUID();
+  let currentUser = null;
+  let latestRecord = null;
+  function deviceId(){ let id=localStorage.getItem(deviceKey); if(!id){id=uuid();localStorage.setItem(deviceKey,id)} return id; }
+  async function refreshAuth(){
+    const {data:{session}} = await client.auth.getSession();
+    currentUser = session?.user || null;
+    const valid = !!currentUser && currentUser.id === EXPECTED_USER;
+    $("authState").textContent = currentUser ? "Connecté : "+currentUser.email+" — "+(valid ? "compte de test autorisé" : "compte non autorisé pour cet espace") : "Non connecté.";
+    $("authState").className = valid ? "ok" : "bad";
+    $("login").disabled = !!currentUser;
+    $("logout").disabled = !currentUser;
+    ["status","run","pull"].forEach(id => $(id).disabled = !valid);
+    if(currentUser && !valid) out("Connexion refusée : ce compte n'est pas propriétaire de l'espace de test. Aucun accès aux données V2 n'est accordé.",true);
+    return valid;
+  }
+  $("login").onclick = async () => {
+    const {error} = await client.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});
+    if(error){out("Échec de connexion : "+error.message,true);return}
+    await refreshAuth(); out("Session Auth ouverte. Projet TEST uniquement.");
+  };
+  $("logout").onclick = async () => { const {error}=await client.auth.signOut(); if(error){out(error.message,true);return} await refreshAuth(); out("Déconnecté."); };
+  client.auth.onAuthStateChange(() => { setTimeout(refreshAuth,0); });
+  $("status").onclick = async () => {
+    try {
+      const {data,error}=await client.from("app_v2_workspaces").select("id,name,change_seq").eq("id",WORKSPACE).single();
+      if(error) throw error;
+      out({resultat:"API + RLS accessibles",workspace:data,device_id:deviceId(),local_cursor:Number(localStorage.getItem(cursorKey)||0)});
+    } catch(e){out("Échec de lecture API/RLS : "+e.message+"\nVérifie que les tables sont exposées dans les paramètres Data API du projet Test et que la session appartient au compte autorisé.",true)}
+  };
+  $("run").onclick = async () => {
+    $("run").disabled = true;
+    const id = "TEST-"+new Date().toISOString().replace(/[-:.TZ]/g,"")+"-"+uuid().slice(0,8);
+    const device = deviceId();
+    try {
+      const d = await client.from("app_v2_devices").upsert({id:device,workspace_id:WORKSPACE,device_label:"Banc V2 — "+navigator.userAgent.slice(0,70),last_seen_at:new Date().toISOString()},{onConflict:"id"});
+      if(d.error) throw d.error;
+      const payload = {id, test_only:true, label:"Fiche synthétique de validation API V2", created_by:"v2-test-harness"};
+      const ins = await client.from("app_v2_records").insert({workspace_id:WORKSPACE,entity_type:"client",record_id:id,payload}).select("revision,record_id").single();
+      if(ins.error) throw ins.error;
+      if(ins.data.revision !== 1) throw new Error("Révision initiale attendue = 1, reçue = "+ins.data.revision);
+      const updatedPayload = {...payload, step:"update", updated_by_test:true};
+      const upd = await client.from("app_v2_records").update({payload:updatedPayload}).eq("workspace_id",WORKSPACE).eq("entity_type","client").eq("record_id",id).eq("revision",1).select("revision").single();
+      if(upd.error) throw upd.error;
+      if(upd.data.revision !== 2) throw new Error("Révision après modification attendue = 2, reçue = "+upd.data.revision);
+      const log = await client.from("app_v2_change_log").select("seq,operation,revision,record_id,payload").eq("workspace_id",WORKSPACE).eq("record_id",id).order("seq",{ascending:true});
+      if(log.error) throw log.error;
+      if(log.data.length !== 2) throw new Error("Deux événements attendus dans le journal, reçus = "+log.data.length);
+      const delAt = new Date().toISOString();
+      const tombstone = {...updatedPayload,__deleted:true,__deleted_at:delAt};
+      const del = await client.from("app_v2_records").update({payload:tombstone,deleted_at:delAt}).eq("workspace_id",WORKSPACE).eq("entity_type","client").eq("record_id",id).eq("revision",2).select("revision,deleted_at").single();
+      if(del.error) throw del.error;
+      if(del.data.revision !== 3 || !del.data.deleted_at) throw new Error("Suppression logique non confirmée.");
+      const finalLog = await client.from("app_v2_change_log").select("seq,operation,revision").eq("workspace_id",WORKSPACE).eq("record_id",id).order("seq",{ascending:true});
+      if(finalLog.error) throw finalLog.error;
+      const maxSeq = Math.max(...finalLog.data.map(x=>Number(x.seq)));
+      const cursor = await client.from("app_v2_sync_cursors").upsert({workspace_id:WORKSPACE,device_id:device,last_seq:maxSeq,updated_at:new Date().toISOString()},{onConflict:"workspace_id,device_id"});
+      if(cursor.error) throw cursor.error;
+      localStorage.setItem(cursorKey,String(maxSeq));
+      latestRecord = id;
+      out({statut:"SUCCÈS — appels réels Auth + Data API + RLS",projet:"Supabase Test uniquement",utilisateur:currentUser.id,device_id:device,record_id:id,revisions:[1,2,3],journal:finalLog.data,curseur:maxSeq,suppression:"logique confirmée",note:"La fiche synthétique reste présente comme tombstone pour que le second appareil puisse recevoir l'événement delete."});
+    } catch(e) { out("Test interrompu : "+e.message+"\nSi l'insertion a réussi avant l'erreur, une fiche TEST peut rester dans le projet Test; aucune donnée V1 ou production n'est touchée.",true); }
+    finally { $("run").disabled = false; }
+  };
+  $("pull").onclick = async () => {
+    try {
+      const device = deviceId();
+      const after = Number(localStorage.getItem(cursorKey)||0);
+      const {data,error}=await client.from("app_v2_change_log").select("seq,entity_type,record_id,operation,revision,payload,changed_at").eq("workspace_id",WORKSPACE).gt("seq",after).order("seq",{ascending:true}).limit(250);
+      if(error) throw error;
+      const maxSeq = data.length ? Number(data[data.length-1].seq) : after;
+      const c = await client.from("app_v2_sync_cursors").upsert({workspace_id:WORKSPACE,device_id:device,last_seq:maxSeq,updated_at:new Date().toISOString()},{onConflict:"workspace_id,device_id"});
+      if(c.error) throw c.error;
+      localStorage.setItem(cursorKey,String(maxSeq));
+      out({statut:"Lecture delta réelle réussie",device_id:device,curseur_avant:after,curseur_apres:maxSeq,evenements_recus:data.length,evenements:data});
+    } catch(e){out("Lecture delta impossible : "+e.message,true)}
+  };
+  refreshAuth();
+})();
+</script>
+</body></html>
