@@ -4,9 +4,9 @@
 (function (global) {
   "use strict";
 
-  const WORKSPACE_ID = "ad49e922-7fd9-447d-b5df-0e5de2ce2554";
-  const DEVICE_KEY = "chabanal_v2_delta_device_id";
-  const CURSOR_KEY = "chabanal_v2_delta_cursor";
+  const WORKSPACE_ID = "2d32b34b-66d8-416b-a369-37f564eb7c99";
+  const DEVICE_KEY = "chabanal_test2_v2_delta_device_id";
+  const CURSOR_KEY = "chabanal_test2_v2_delta_cursor";
   const PAGE_SIZE = 250;
   const ENTITY_TYPES = new Set([
     "client", "intervention", "equipment_model", "equipment_installation",
