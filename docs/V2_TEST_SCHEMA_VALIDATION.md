@@ -16,6 +16,8 @@ Ne pas appliquer ce script au projet principal : il s'agit d'une préparation is
 
 Les cinq tables ont RLS activé. Le rôle `anon` n'a aucun privilège sur ces tables. Le rôle `authenticated` dispose uniquement des opérations nécessaires au client delta : lecture du workspace et du journal ; lecture, insertion et mise à jour des appareils, enregistrements et curseurs. Aucune suppression physique n'est accordée.
 
+Les clés étrangères de propriétaire et de dernier modificateur disposent d'index dédiés pour éviter les avertissements de performance sur les recherches de référence.
+
 Les fonctions de déclenchement sont placées dans le schéma non exposé `private`, avec `search_path` fixé. Elles calculent la révision côté serveur et ajoutent un événement au journal dans la même transaction que l'écriture métier.
 
 ## Vérifications effectuées
