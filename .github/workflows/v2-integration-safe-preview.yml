@@ -1,0 +1,35 @@
+name: V2 progressive integration preview
+
+on:
+  push:
+    branches: [v2-integration-safe-preview]
+  pull_request:
+    branches: [v2-delta-sync-adapter]
+    paths:
+      - "sync-v2-delta.js"
+      - "sync-v2-delta.test.js"
+      - "legacy-v2-mapper.js"
+      - "legacy-v2-mapper.test.js"
+      - "v2-*.js"
+      - "tests/**"
+      - ".github/workflows/v2-integration-safe-preview.yml"
+
+jobs:
+  preview-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        run: |
+          for file in sync-v2-delta.js legacy-v2-mapper.js v2-migration-preview.js v2-inbound-merge-preview.js v2-inbound-staging.js v2-media-inventory.js v2-media-transfer.js v2-operation-bridge.js; do
+            node --check "$file"
+          done
+      - name: Run mapper tests
+        run: node legacy-v2-mapper.test.js
+      - name: Run mocked two-device delta tests
+        run: node sync-v2-delta.test.js
+      - name: Run mocked media transfer tests
+        run: node --test tests/v2-media-transfer.test.cjs
