@@ -3,8 +3,8 @@
  */
 (function (global) {
   "use strict";
-  const STATE_KEY = "chabanal_v2_operation_bridge_state";
-  const FLAG_KEY = "chabanal_v2_operation_bridge_enabled";
+  const STATE_KEY = "chabanal_test2_v2_operation_bridge_state";
+  const FLAG_KEY = "chabanal_test2_v2_operation_bridge_enabled";
   const WATCHED = new Set([
     "metier_clients_v1_2_corrigee", "metier_clients_deleted_v1",
     "metier_equipement_modeles_v1", "metier_equipement_attributions_v1",
@@ -49,8 +49,8 @@
     running = true;
     try {
       const records = mapper();
-      if (typeof global.metierMediaSupabase !== "function") throw new Error("Accès Supabase authentifié indisponible. Aucun envoi effectué.");
-      const client = await global.metierMediaSupabase();
+      if (typeof global.ChabanalV2Test2.getAuthenticatedClient !== "function") throw new Error("Connecteur Supabase Test 2 indisponible. Aucun envoi effectué.");
+      const client = await global.ChabanalV2Test2.getAuthenticatedClient();
       if (!client) throw new Error("Connexion Supabase non authentifiée. Aucun envoi effectué.");
       const sync = global.ChabanalV2DeltaSync.create(client);
       const state = readState();
