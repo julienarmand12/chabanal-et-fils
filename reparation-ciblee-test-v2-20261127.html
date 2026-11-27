@@ -1,0 +1,66 @@
+<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Réparation ciblée V2 — téléphone 1</title><style>body{font:16px system-ui;background:#0c1b2c;color:#eaf3ff;max-width:760px;margin:auto;padding:20px}button{padding:14px 20px;border:0;border-radius:9px;background:#3c91d7;color:#fff;font-weight:700}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#19334b;padding:18px;border-radius:12px}small{color:#b8cadd}</style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><h2>Réparation ciblée TEST — téléphone 1</h2><p>Sur le téléphone 1, dans le navigateur de l'application. Comparaison des fiches locales avec les fiches actives Supabase, sans modifier les données métier.</p><button id="go">1. Vérifier et préparer une sauvegarde</button><p><label><input type="checkbox" id="confirm" disabled> J’ai téléchargé et conservé le fichier de sauvegarde</label></p><button id="apply" disabled>2. Réparer le téléphone 1</button><pre id="out">En attente.</pre><small>Le résultat ne contient ni noms, ni adresses, ni identifiants de clients. Ne transmettez pas les données brutes.</small><script>
+'use strict';
+const C='metier_clients_v1_2_corrigee',D='metier_clients_deleted_v1',Q='chabanal_v2_sync_queue',M='chabanal_v2_cloud_meta',K='chabanal_v2_cloud_config';
+const read=k=>localStorage.getItem(k),parse=k=>JSON.parse(read(k)||'null');
+function normalize(x){if(Array.isArray(x))return x.map(normalize);if(x&&typeof x==='object')return Object.fromEntries(Object.keys(x).sort().map(k=>[k,normalize(x[k])]));return x}
+function signature(x){return JSON.stringify(normalize(x))}
+function counts(items){let m=new Map();for(let x of items){let s=signature(x);m.set(s,(m.get(s)||0)+1)}return m}
+function diff(a,b){let n=0;for(let [k,v] of a)n+=Math.max(0,v-(b.get(k)||0));return n}
+function byId(a){let m=new Map();for(let x of a){let id=String(x?.id??'');if(!m.has(id))m.set(id,[]);m.get(id).push(x)}return m}
+function summarize(a,b){let A=byId(a),B=byId(b),ids=new Set([...A.keys(),...B.keys()]),localOnly=0,cloudOnly=0,changed=0,same=0,dupLocal=0,dupCloud=0;for(let id of ids){let la=A.get(id)||[],cb=B.get(id)||[];if(la.length>1)dupLocal+=la.length-1;if(cb.length>1)dupCloud+=cb.length-1;if(!la.length)localOnly+=cb.length;else if(!cb.length)cloudOnly+=la.length;else{let aa=counts(la),bb=counts(cb);if(diff(aa,bb)||diff(bb,aa))changed++;else same++}}return {fichesUniquementCloud:localOnly,fichesUniquementTelephone:cloudOnly,identifiantsCommunsDifferents:changed,identifiantsCommunsIdentiques:same,doublonsIdTelephone:dupLocal,doublonsIdCloud:dupCloud}}
+const go=document.getElementById('go'),out=document.getElementById('out'),apply=document.getElementById('apply'),confirm=document.getElementById('confirm');let prepared=null;
+
+function hash(x){return crypto.subtle.digest('SHA-256',new TextEncoder().encode(x)).then(b=>Array.from(new Uint8Array(b),v=>v.toString(16).padStart(2,'0')).join(''))}
+async function inspect(){
+const keys=[C,D,Q,M],snap=Object.fromEntries(keys.map(k=>[k,read(k)]));
+const local=JSON.parse(snap[C]||'null'),del=JSON.parse(snap[D]||'null'),q=JSON.parse(snap[Q]||'{}'),m=JSON.parse(snap[M]||'{}'),cfg=parse(K);
+if(!Array.isArray(local)||!Array.isArray(del)||!q||!m)throw Error('Données locales invalides');
+if(Number(m[C])!==559)throw Error('Version locale différente de 559');
+if(Object.keys(q).length!==1||q[C]?.reason!=='baseline-mismatch')throw Error('File d’attente différente de celle analysée');
+if(cfg?.url!=='https://kqdsrezgwlkiezxyqkiv.supabase.co'||!cfg.key)throw Error('Configuration Supabase invalide');
+const sb=window.supabase.createClient(cfg.url,cfg.key,{auth:{persistSession:true,autoRefreshToken:false,detectSessionInUrl:false,storage:localStorage}});
+const session=await sb.auth.getSession();if(session.error||!session.data.session)throw Error('Session Supabase absente');
+const [a,b]=await Promise.all([sb.from('app_sync_state').select('value_json,version').eq('key_name',C).single(),sb.from('app_sync_state').select('value_json,version').eq('key_name',D).single()]);
+if(a.error||b.error||Number(a.data.version)!==560||Number(b.data.version)!==27)throw Error('Versions cloud modifiées : arrêt');
+const cloudRaw=a.data.value_json,deleted=b.data.value_json;
+if(!Array.isArray(cloudRaw)||!Array.isArray(deleted)||signature(del.map(String).sort())!==signature(deleted.map(x=>typeof x==='string'?x:x?.id).map(String).sort()))throw Error('Suppressions divergentes');
+const removed=new Set(deleted.map(x=>String(typeof x==='string'?x:x?.id)));
+const cloud=cloudRaw.filter(x=>!removed.has(String(x?.id??'')));
+if(local.length!==759||cloud.length!==759)throw Error('Totaux inattendus');
+const test=x=>JSON.stringify(x).toUpperCase().includes('TEST SYNCHRO V2'),lt=local.filter(test),ct=cloud.filter(test);
+if(lt.length!==1||ct.length!==1||String(lt[0].id)!==String(ct[0].id)||!JSON.stringify(ct[0]).includes('TEST RETOUR TEL 2'))throw Error('Fiche TEST non validée');
+const otherL=local.filter(x=>String(x?.id)!==String(lt[0].id)),otherC=cloud.filter(x=>String(x?.id)!==String(ct[0].id));
+if(signature([...otherL].map(signature).sort())!==signature([...otherC].map(signature).sort()))throw Error('Une autre fiche est différente : arrêt');
+const result=local.map(x=>String(x?.id)===String(lt[0].id)?ct[0]:x);
+if(signature(result.map(signature).sort())!==signature(cloud.map(signature).sort()))throw Error('Comparaison finale incorrecte');
+if(keys.some(k=>read(k)!==snap[k]))throw Error('Données locales modifiées pendant la vérification');
+return {snap,result,version:560,summary:{fiches:result.length,versionAvant:559,versionApres:560,ficheTestModifiee:1,autresFichesModifiees:0}};
+}
+go.onclick=async()=>{go.disabled=true;apply.disabled=true;confirm.checked=false;confirm.disabled=true;prepared=null;out.textContent='Vérification en cours…';try{
+const v=await inspect();const backup={date:new Date().toISOString(),origine:'telephone-1-avant-reparation-test-v2',clients:JSON.parse(v.snap[C]),suppressions:JSON.parse(v.snap[D]),fileAttente:JSON.parse(v.snap[Q]),meta:JSON.parse(v.snap[M]),empreinte:read('chabanal_v2_clients_verified_baseline_sha256')};
+const blob=new Blob([JSON.stringify(backup)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='sauvegarde-avant-reparation-v2-20261127.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+prepared=v;confirm.disabled=false;out.textContent='CONTRÔLE VALIDÉ : une seule fiche TEST différente. Téléchargez et conservez la sauvegarde proposée, cochez la case, puis cliquez sur Réparer. Aucune écriture effectuée à ce stade.';
+}catch(e){out.textContent='ARRÊT SANS ÉCRITURE : '+e.message}finally{go.disabled=false}};
+confirm.onchange=()=>{apply.disabled=!confirm.checked||!prepared};
+apply.onclick=async()=>{apply.disabled=true;go.disabled=true;out.textContent='Nouvelle vérification avant réparation…';try{
+const v=await inspect();if(Object.keys(v.snap).some(k=>v.snap[k]!==prepared.snap[k]))throw Error('Données locales changées depuis la sauvegarde');
+const raw=JSON.stringify(v.result),newMeta={...JSON.parse(v.snap[M]),[C]:560},newQueue={...JSON.parse(v.snap[Q])};delete newQueue[C];
+const oldFp=read('chabanal_v2_clients_verified_baseline_sha256');
+const fp=JSON.stringify({version:560,sha256:await hash(raw)});
+if(Object.keys(v.snap).some(k=>read(k)!==v.snap[k]))throw Error('Données locales modifiées avant écriture');
+try{
+localStorage.setItem(C,raw);
+if(read(C)!==raw)throw Error('Vérification écriture clients échouée');
+localStorage.setItem(M,JSON.stringify(newMeta));
+localStorage.setItem(Q,JSON.stringify(newQueue));
+localStorage.setItem('chabanal_v2_clients_verified_baseline_sha256',fp);
+}catch(e){
+let rollback=[];
+for(let [k,val] of [[C,v.snap[C]],[M,v.snap[M]],[Q,v.snap[Q]],['chabanal_v2_clients_verified_baseline_sha256',oldFp]])try{if(val===null)localStorage.removeItem(k);else localStorage.setItem(k,val)}catch(x){rollback.push(k)}
+throw Error('Écriture interrompue : '+e.message+(rollback.length?' ; restauration incomplète, ne pas rouvrir l’application':' ; anciennes données restaurées'));
+}
+if(read(C)!==raw||JSON.parse(read(M))[C]!==560||JSON.parse(read(Q))[C]||read('chabanal_v2_clients_verified_baseline_sha256')!==fp)throw Error('Vérification finale incomplète : ne pas rouvrir l’application');
+out.textContent='RÉPARATION LOCALE VALIDÉE : 759 fiches, seule la fiche TEST mise à jour, version 560, file clients débloquée, empreinte renouvelée. Supabase inchangé. Envoyez ce résultat avant de rouvrir l’application.';
+prepared=null;confirm.disabled=true;
+}catch(e){out.textContent='ARRÊT : '+e.message+'\nConservez la sauvegarde et transmettez ce message.'}finally{go.disabled=false}};
+</script></html>
