@@ -1,0 +1,34 @@
+<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Contrôle final V2 — lecture seule</title>
+<style>body{font:16px system-ui;background:#071b32;color:#eaf3ff;max-width:780px;margin:auto;padding:18px}button{padding:14px;border:0;border-radius:9px;background:#176bc0;color:white;font-weight:700}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#102c49;border-radius:12px;padding:16px}small{color:#abc6df}</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><h2>Contrôle final — synchronisation V2</h2><p>Sur chaque téléphone, ouvrir cette page <b>dans le même navigateur que l’application</b>. Ne pas ouvrir l’application principale. Aucune écriture locale ni cloud.</p><button id="run">Vérifier — lecture seule</button><pre id="out">En attente.</pre><small>Ne pas communiquer de données clients. Envoyer seulement le résultat de ce contrôle.</small>
+<script>
+'use strict';
+const C='metier_clients_v1_2_corrigee',D='metier_clients_deleted_v1',Q='chabanal_v2_sync_queue',M='chabanal_v2_cloud_meta',K='chabanal_v2_cloud_config',B='chabanal_v2_local_backup_20261011_'+C;
+const get=k=>localStorage.getItem(k),parse=k=>JSON.parse(get(k)||'null'),norm=x=>Array.isArray(x)?x.map(norm):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,norm(x[k])])):x;
+const sig=x=>JSON.stringify(norm(x)),bag=a=>a.map(sig).sort(),assert=(x,m)=>{if(!x)throw Error(m)},count=a=>a.reduce((n,x)=>n+(Array.isArray(x.interventions)?x.interventions.length:0),0);
+const sum=()=>{let n=0;for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);n+=2*(k.length+(get(k)||'').length)}return n};
+document.getElementById('run').onclick=async()=>{const btn=document.getElementById('run'),out=document.getElementById('out');btn.disabled=true;out.textContent='Contrôle en cours…';
+try{
+ const raw=Object.fromEntries([C,D,Q,M,B].map(k=>[k,get(k)]));
+ const l=parse(C),d=parse(D),q=parse(Q),m=parse(M),cfg=parse(K);
+ assert(Array.isArray(l)&&Array.isArray(d)&&m&&q&&typeof q==='object','Données locales manquantes');
+ assert(l.length===758&&count(l)===3798,'Totaux locaux différents des valeurs attendues');
+ assert(Number(m[C])===557,'Version clients locale différente de 557');
+ assert(Object.keys(q).length===0,'File d’attente non vide');
+ assert(raw[B]===null,'Ancienne archive encore présente');
+ assert(cfg?.url==='https://kqdsrezgwlkiezxyqkiv.supabase.co'&&cfg.key,'Configuration Supabase inattendue');
+ const sb=window.supabase.createClient(cfg.url,cfg.key,{auth:{persistSession:true,autoRefreshToken:false,detectSessionInUrl:false,storage:localStorage}});
+ const session=await sb.auth.getSession();assert(!session.error&&session.data.session,'Session Supabase absente');
+ const [a,b]=await Promise.all([sb.from('app_sync_state').select('value_json,version').eq('key_name',C).single(),sb.from('app_sync_state').select('value_json,version').eq('key_name',D).single()]);
+ assert(!a.error&&!b.error,'Lecture cloud impossible');
+ assert(Number(a.data.version)===557&&Number(b.data.version)===27,'Versions cloud différentes des valeurs attendues');
+ const cd=b.data.value_json;assert(Array.isArray(cd)&&sig(bag(d))===sig(bag(cd)),'Liste des suppressions différente');
+ const cloud=a.data.value_json.filter(x=>!cd.includes(x.id));assert(cloud.length===758&&count(cloud)===3798,'Totaux cloud différents');
+ assert(sig(bag(l))===sig(bag(cloud)),'Contenu des fiches différent entre téléphone et cloud (ordre ignoré)');
+ assert(Object.keys(raw).every(k=>get(k)===raw[k]),'Données locales modifiées pendant le contrôle');
+ const resp=await fetch('./index.html?audit_v2_20261127=1',{cache:'no-store'});assert(resp.ok,'Impossible de lire le code publié');
+ const source=await resp.text();
+ assert(source.includes('Téléchargement clients divergent bloqué')&&source.includes('if(k===CLIENTS_KEY)'), 'Correctif non détecté dans le code publié');
+ out.textContent=['CONTRÔLE FINAL VALIDÉ','Fiches : 758 identiques au cloud','Interventions : 3798','Version clients : 557','Suppressions : identiques (version cloud 27)','File d’attente : vide','Archive ancienne : absente','Correctif V2 : détecté sur GitHub Pages','Stockage local estimé : '+sum()+' octets UTF-16','Aucune écriture locale ou cloud effectuée.','NE PAS RELANCER ENCORE L’APPLICATION PRINCIPALE.'].join('\n');
+}catch(e){out.textContent='CONTRÔLE NON VALIDÉ : '+e.message+'\nNe relancez pas l’application principale.'}finally{btn.disabled=false}};
+</script></html>
