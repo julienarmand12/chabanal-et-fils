@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Contrôle ciblé Gasquet — Chabanal et fils</title><meta name="robots" content="noindex,nofollow">
+<style>
+:root{font-family:system-ui,Arial,sans-serif;background:#03162e;color:#eaf2ff}*{box-sizing:border-box}
+body{max-width:850px;margin:auto;padding:16px;line-height:1.5}
+section{background:#092847;border:1px solid #28577d;border-radius:12px;padding:14px;margin:14px 0;overflow-wrap:anywhere}
+button,a{display:inline-block;background:#147ce0;color:white;border:0;border-radius:8px;padding:11px 14px;text-decoration:none;font-weight:650;margin:4px 6px 4px 0}
+button:disabled{opacity:.5}.muted{color:#bfd0e5}.ok{color:#8de7a6}.warn{color:#ffd184}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#061b34;border-radius:8px;padding:12px;font-size:.82rem}
+</style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script></head>
+<body>
+<h1>Contrôle ciblé — Gasquet</h1>
+<p class="muted">Lecture seule sur ce téléphone. La page examine la fiche locale Gasquet, la file de synchronisation en attente et la fiche cloud. Elle n'écrit rien dans le téléphone ni dans Supabase, ne lance aucune synchronisation et ne modifie aucune donnée.</p>
+<p><a href="./diagnostic-sync.html">Retour au diagnostic général</a><button id="run">Analyser Gasquet</button><button id="copy" disabled>Copier le rapport</button></p>
+<section id="status">Ouvre cette page depuis le téléphone 2, puis lance l'analyse.</section>
+<section><h2>Rapport détaillé</h2><pre id="report">En attente de l'analyse.</pre></section>
+<script>
+(()=>{'use strict';
+const CLIENT='metier_clients_v1_2_corrigee',QUEUE='chabanal_v2_sync_queue',META='chabanal_v2_cloud_meta',CFG='chabanal_v2_cloud_config',ID='client_1795599958525',KEY=CLIENT;
+const $=id=>document.getElementById(id),get=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}},arr=x=>Array.isArray(x)?x:[];
+const stable=x=>Array.isArray(x)?x.map(stable):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x;
+const sig=x=>JSON.stringify(stable(x)),same=(a,b)=>sig(a)===sig(b);
+const dateOf=x=>x&&(x.date||x.iso||x.dateIntervention||x.created_at||x.createdAt||x.timestamp||x.jour||'date non renseignée');
+const safeText=x=>String(x??'').replace(/\s+/g,' ').slice(0,240);
+function clientBlock(label,c){
+ if(!c)return label+' : fiche absente';
+ const xs=arr(c.interventions);
+ return [label+' : '+(c.name||c.nom||ID)+' ['+(c.id||'ID absent')+']','Nombre d’interventions : '+xs.length,...xs.map((x,i)=>(i+1)+'. Date : '+dateOf(x)+' | ID : '+(x.id||x.interventionId||x.uuid||'absent')+' | Type : '+safeText(x.type||x.motif||x.titre||x.description||x.note||'non renseigné'))].join('\n');
+}
+function diffItems(before,after){
+ const left=arr(before).slice(),added=[],removed=[];
+ for(const x of arr(after)){const i=left.findIndex(y=>same(x,y));if(i>=0)left.splice(i,1);else added.push(x)}
+ const right=arr(after).slice();
+ for(const x of arr(before)){const i=right.findIndex(y=>same(x,y));if(i>=0)right.splice(i,1);else removed.push(x)}
+ return {added,removed};
+}
+let report='';
+$('copy').onclick=async()=>{try{await navigator.clipboard.writeText(report);$('status').textContent='Rapport copié.'}catch(e){$('status').textContent='Copie indisponible : sélectionne le rapport.'}};
+$('run').onclick=async()=>{
+ $('run').disabled=true;$('copy').disabled=true;$('status').textContent='Lecture locale puis lecture cloud…';
+ try{
+  const local=arr(get(CLIENT)),queue=get(QUEUE)||{},meta=get(META)||{},pending=queue[KEY]||null;
+  const localMatches=local.filter(c=>String(c?.id)===ID),localGasquet=localMatches.length===1?localMatches[0]:null;
+  const changes=pending?.patch?.changes&&typeof pending.patch.changes==='object'?pending.patch.changes:{};
+  const ids=Object.keys(changes),change=changes[ID]||null;
+  const lines=['CONTROLE CIBLE GASQUET — LECTURE SEULE','Date : '+new Date().toLocaleString('fr-FR'),'ID cible : '+ID,'Version locale connue : '+Number(meta[KEY]||0),'Clés de file en attente : '+Object.keys(queue).join(', ')+'','Clé clients en attente : '+(pending?'OUI':'NON'),'Motif de la file : '+(pending?.reason||'non renseigné'),'Date de mise en file : '+(pending?.queuedAt||'non renseignée'),'Type de patch : '+(pending?.patch?.kind||'non renseigné'),'Nombre de fiches dans le patch : '+ids.length,'IDs présents dans le patch : '+(ids.join(', ')||'aucun'),'','FICHES LOCALES GASQUET TROUVÉES : '+localMatches.length,clientBlock('FICHE LOCALE ACTUELLE',localGasquet),''];
+  if(change){
+   lines.push('PATCH GASQUET : OUI','--- BASE AVANT MODIFICATION ---',clientBlock('BASE',change.before),'','--- ÉTAT APRÈS MODIFICATION ---',clientBlock('LOCAL APRÈS',change.after));
+   const delta=diffItems(change.before?.interventions,change.after?.interventions);
+   lines.push('','INTERVENTIONS AJOUTÉES DANS LE PATCH : '+delta.added.length,...delta.added.map((x,i)=>(i+1)+'. '+JSON.stringify(x)),'INTERVENTIONS RETIRÉES DANS LE PATCH : '+delta.removed.length,...delta.removed.map((x,i)=>(i+1)+'. '+JSON.stringify(x)));
+  }else lines.push('PATCH GASQUET : aucune entrée Gasquet dans le patch en attente.');
+  for(const id of ids.filter(x=>x!==ID)){
+   const ch=changes[id],c=local.find(x=>String(x?.id)===String(id))||ch?.after;
+   lines.push('AUTRE FICHE DANS LE PATCH : '+id+' | '+(c?.name||c?.nom||'nom non trouvé')+' | interventions locales : '+arr(c?.interventions).length);
+  }
+  const cfg=get(CFG);
+  if(!cfg?.url||!cfg?.key)throw new Error('Configuration Supabase absente sur cet appareil.');
+  if(!window.supabase)throw new Error('Bibliothèque Supabase indisponible.');
+  const sb=window.supabase.createClient(cfg.url,cfg.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storage:localStorage}});
+  const session=await sb.auth.getSession();if(session.error)throw session.error;if(!session.data.session)throw new Error('Session Supabase absente. Ouvre l’application et reconnecte-toi.');
+  const {data,error}=await sb.from('app_sync_state').select('value_json,version').eq('key_name',KEY).maybeSingle();
+  if(error)throw error;if(!data||!Array.isArray(data.value_json))throw new Error('Liste clients cloud absente ou invalide.');
+  const cloudMatches=data.value_json.filter(c=>String(c?.id)===ID),cloudGasquet=cloudMatches.length===1?cloudMatches[0]:null;
+  lines.push('','VERSION CLOUD : '+Number(data.version||0),'FICHES GASQUET DANS LE CLOUD : '+cloudMatches.length,clientBlock('FICHE CLOUD ACTUELLE',cloudGasquet));
+  lines.push('','CONCLUSION TECHNIQUE :');
+  if(localMatches.length!==1)lines.push('Nombre de fiches locales Gasquet inattendu : '+localMatches.length+'.');
+  if(cloudMatches.length!==1)lines.push('Nombre de fiches cloud Gasquet inattendu : '+cloudMatches.length+'.');
+  if(change){const d=diffItems(change.before?.interventions,change.after?.interventions);lines.push('Le patch contient '+d.added.length+' ajout(s) et '+d.removed.length+' retrait(s) d’intervention(s) pour Gasquet.')}
+  else lines.push('La file clients ne contient pas de patch ciblant Gasquet ; la présence locale seule ne suffit pas à déterminer son origine.');
+  lines.push('AUCUNE ÉCRITURE EFFECTUÉE. AUCUNE SYNCHRONISATION LANCÉE.');
+  report=lines.join('\n');$('report').textContent=report;$('copy').disabled=false;$('status').textContent='Analyse terminée en lecture seule.';
+ }catch(e){report='ANALYSE INCOMPLÈTE — '+(e?.message||String(e))+'\nAucune écriture ni synchronisation lancée.';$('report').textContent=report;$('status').textContent='Analyse incomplète : '+(e?.message||e)}
+ finally{$('run').disabled=false}
+};
+})();
+</script></body></html>
