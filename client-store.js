@@ -1,0 +1,205 @@
+/* Stockage IndexedDB des fiches clients — migration progressive.
+ * Ne supprime jamais la copie localStorage : elle reste disponible pour retour arrière.
+ * Cette couche est volontairement indépendante ; l'application ne bascule dessus
+ * qu'après adaptation du démarrage et de la synchronisation Supabase.
+ */
+(function () {
+  "use strict";
+
+  const TEST_MODE = document.currentScript?.dataset?.testMode === "true";
+  const DB_NAME = TEST_MODE ? "chabanal_clients_db_test" : "chabanal_clients_db";
+  const DB_VERSION = 1;
+  const STORE = "snapshots";
+  const RECORD_ID = "clients";
+  const LEGACY_KEY = TEST_MODE ? "metier_clients_test_v1" : "metier_clients_v1_2_corrigee";
+  let dbPromise;
+  let loadPromise;
+  let writeChain = Promise.resolve();
+
+  function openDB() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+      if (!("indexedDB" in window)) {
+        reject(new Error("IndexedDB n'est pas disponible sur cet appareil."));
+        return;
+      }
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(STORE)) {
+          db.createObjectStore(STORE, { keyPath: "id" });
+        }
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        db.onversionchange = () => db.close();
+        resolve(db);
+      };
+      request.onerror = () => reject(request.error || new Error("Ouverture IndexedDB impossible."));
+      request.onblocked = () => reject(new Error("Une autre version de l'application bloque l'ouverture du stockage."));
+    });
+    return dbPromise;
+  }
+
+  function requestValue(request) {
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error("Lecture IndexedDB impossible."));
+    });
+  }
+
+  async function readRecord() {
+    const db = await openDB();
+    const tx = db.transaction(STORE, "readonly");
+    return requestValue(tx.objectStore(STORE).get(RECORD_ID));
+  }
+
+  async function writeRecord(value, source) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).put({
+        id: RECORD_ID,
+        value,
+        count: value.length,
+        updatedAt: new Date().toISOString(),
+        source: source || "application"
+      });
+      tx.oncomplete = () => resolve({ count: value.length });
+      tx.onerror = () => reject(tx.error || new Error("Écriture IndexedDB impossible."));
+      tx.onabort = () => reject(tx.error || new Error("Écriture IndexedDB annulée."));
+    });
+  }
+
+  function validateClients(value) {
+    if (!Array.isArray(value)) throw new Error("La base clients reçue n'est pas une liste.");
+    if (value.some(c => !c || typeof c !== "object" || c.id == null)) {
+      throw new Error("La base contient une fiche sans identifiant : écriture interrompue.");
+    }
+    return value;
+  }
+
+  function load() {
+    // Mutualiser uniquement les chargements simultanés. Une fois terminé,
+    // le prochain appel relit IndexedDB pour ne jamais servir un ancien snapshot.
+    if (loadPromise) return loadPromise;
+    const pending = (async () => {
+      const record = await readRecord();
+      if (record) {
+        if (!Array.isArray(record.value)) {
+          throw new Error("Le snapshot IndexedDB existe mais est invalide ; aucune donnée ne sera remplacée.");
+        }
+        validateClients(record.value);
+        return { clients: record.value, source: "indexeddb", migrated: false };
+      }
+
+      // Migration initiale non destructive : lire localStorage, puis réserver
+      // l'écriture dans la même file que save() et replaceFromCloud().
+      // Le contrôle dans la file empêche une migration tardive d'écraser
+      // une sauvegarde locale ou une copie cloud arrivée entre-temps.
+      const raw = localStorage.getItem(LEGACY_KEY);
+      if (raw === null) {
+        await writeChain;
+        const latest = await readRecord();
+        if (latest) {
+          if (!Array.isArray(latest.value)) {
+            throw new Error("Le snapshot IndexedDB existe mais est invalide ; aucune donnée ne sera remplacée.");
+          }
+          validateClients(latest.value);
+          return { clients: latest.value, source: latest.source || "indexeddb", migrated: false };
+        }
+        return { clients: null, source: "empty", migrated: false };
+      }
+      let legacy;
+      try { legacy = JSON.parse(raw); }
+      catch (_) { throw new Error("La sauvegarde locale des clients est illisible ; aucune donnée n'a été modifiée."); }
+      validateClients(legacy);
+
+      const verified = await enqueueWrite(async () => {
+        const latest = await readRecord();
+        if (latest) {
+          if (!Array.isArray(latest.value)) {
+            throw new Error("Le snapshot IndexedDB existe mais est invalide ; aucune donnée ne sera remplacée.");
+          }
+          validateClients(latest.value);
+          return latest;
+        }
+        await writeRecord(legacy, "migration-localstorage");
+        return readRecord();
+      });
+
+      if (!verified || !Array.isArray(verified.value) ||
+          verified.value.length !== legacy.length ||
+          JSON.stringify(verified.value) !== JSON.stringify(legacy)) {
+        // Si une écriture concurrente légitime a gagné la file, elle devient
+        // la source de vérité : ne pas la considérer comme un échec de migration.
+        const latest = await readRecord();
+        if (!latest || !Array.isArray(latest.value)) {
+          throw new Error("La vérification après migration a échoué ; la copie locale d'origine est conservée.");
+        }
+        validateClients(latest.value);
+        return { clients: latest.value, source: latest.source || "indexeddb", migrated: false };
+      }
+      return { clients: verified.value, source: "localstorage-migrated", migrated: true };
+    })();
+
+    loadPromise = pending;
+    pending.then(
+      () => { if (loadPromise === pending) loadPromise = null; },
+      () => { if (loadPromise === pending) loadPromise = null; }
+    );
+    return pending;
+  }
+
+  function enqueueWrite(task) {
+    const operation = writeChain.then(task);
+    writeChain = operation.catch(() => {});
+    return operation;
+  }
+
+  function save(clients) {
+    const snapshot = JSON.parse(JSON.stringify(validateClients(clients)));
+    return enqueueWrite(() => writeRecord(snapshot, "application"));
+  }
+
+  function replaceFromCloud(clients) {
+    const snapshot = JSON.parse(JSON.stringify(validateClients(clients)));
+    // Sérialiser le remplacement cloud avec les sauvegardes locales. Sans cela,
+    // une sauvegarde lancée pendant l'attente pourrait écraser la copie cloud.
+    return enqueueWrite(async () => {
+      const result = await writeRecord(snapshot, "supabase");
+      const verified = await readRecord();
+      if (!verified || JSON.stringify(verified.value) !== JSON.stringify(snapshot)) {
+        throw new Error("La copie cloud n'a pas pu être vérifiée dans IndexedDB.");
+      }
+      return result;
+    });
+  }
+
+  async function exportLegacyCopy() {
+    await writeChain;
+    const record = await readRecord();
+    if (!record) return null;
+    return JSON.stringify(record.value);
+  }
+
+  async function status() {
+    await writeChain;
+    const record = await readRecord();
+    return record ? {
+      ready: true,
+      count: record.count,
+      updatedAt: record.updatedAt,
+      source: record.source
+    } : { ready: false, count: 0 };
+  }
+
+  window.ChabanalClientStore = Object.freeze({
+    load,
+    save,
+    replaceFromCloud,
+    exportLegacyCopy,
+    status,
+    flush: () => writeChain
+  });
+})();

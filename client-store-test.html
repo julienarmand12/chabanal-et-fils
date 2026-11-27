@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Test stockage clients — Chabanal et fils</title>
+<style>
+body{font:16px system-ui,sans-serif;max-width:850px;margin:32px auto;padding:0 16px;color:#172033;background:#f4f6fa}
+h1{font-size:1.45rem}button{padding:10px 14px;border:0;border-radius:8px;background:#203b62;color:#fff;font-weight:600}
+.note{background:#fff4d6;padding:12px;border-radius:8px}pre{white-space:pre-wrap;background:#111827;color:#e5e7eb;padding:14px;border-radius:8px;min-height:180px}
+</style>
+</head>
+<body>
+<h1>Validation isolée du stockage IndexedDB</h1>
+<p class="note"><strong>Page de test uniquement.</strong> Elle utilise une base IndexedDB dédiée au module et une clé localStorage de test. Elle ne lit ni ne modifie les fiches clients réelles, Supabase, les équipements ou les données de production.</p>
+<button id="run">Lancer les tests</button>
+<pre id="log">En attente…</pre>
+<script src="./client-store.js" data-test-mode="true"></script>
+<script>
+(async function(){
+ const DB="chabanal_clients_db_test", KEY="metier_clients_test_v1";
+ const log=document.getElementById("log"),button=document.getElementById("run");
+ function line(s){log.textContent+=s+"\n"}
+ function assert(ok,msg){if(!ok)throw new Error("ÉCHEC : "+msg);line("OK : "+msg)}
+ function resetDB(){return new Promise((resolve,reject)=>{const r=indexedDB.deleteDatabase(DB);r.onsuccess=resolve;r.onerror=()=>reject(r.error);r.onblocked=()=>reject(new Error("Suppression de la base de test bloquée."))})}
+ button.addEventListener("click",async()=>{
+  button.disabled=true;log.textContent="";
+  try{
+   await resetDB();
+   localStorage.setItem(KEY,JSON.stringify([{id:"test-1",name:"Client test",interventions:[{id:"i1"}]},{id:"test-2",name:"Second test",interventions:[]}]));
+   const [a,b]=await Promise.all([ChabanalClientStore.load(),ChabanalClientStore.load()]);
+   assert(a.clients.length===2&&b.clients.length===2,"chargement initial et appels concurrents");
+   assert(a.migrated===true&&b.migrated===true,"migration initiale unique");
+   assert(JSON.parse(localStorage.getItem(KEY)).length===2,"copie localStorage historique conservée");
+   const changed=[...a.clients,{id:"test-3",name:"Ajout test",interventions:[]}];
+   await Promise.all([ChabanalClientStore.save(changed),ChabanalClientStore.save(changed)]);
+   assert((await ChabanalClientStore.status()).count===3,"écritures IndexedDB sérialisées");
+   const cloud=[{id:"cloud-1",name:"Copie cloud test",interventions:[]}];
+   await Promise.all([ChabanalClientStore.save(changed),ChabanalClientStore.replaceFromCloud(cloud)]);
+   const after=await ChabanalClientStore.load();
+   assert(after.clients.length===1&&after.clients[0].id==="cloud-1","remplacement cloud prioritaire et vérifié");
+   const reloaded=await ChabanalClientStore.load();
+   assert(reloaded.clients.length===1&&reloaded.clients[0].id==="cloud-1","nouveau chargement relit le dernier snapshot IndexedDB");
+   const exported=JSON.parse(await ChabanalClientStore.exportLegacyCopy());
+   assert(exported.length===1&&exported[0].id==="cloud-1","export de secours cohérent");
+   let rejected=false;try{await ChabanalClientStore.save([{name:"Sans identifiant"}])}catch(e){rejected=true}
+   assert(rejected,"refus d'une fiche sans identifiant");
+   line("\nTous les tests automatisés sont réussis.");
+  }catch(e){line("\n"+(e.stack||e.message));}
+  finally{button.disabled=false}
+ });
+})();
+</script>
+
+</body>
+</html>

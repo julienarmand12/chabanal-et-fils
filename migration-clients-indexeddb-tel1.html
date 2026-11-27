@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Copie de sécurité IndexedDB — Chabanal et fils</title>
+<style>
+:root{font-family:system-ui,Arial,sans-serif;color:#eaf2ff;background:#03162e}
+*{box-sizing:border-box}body{max-width:820px;margin:auto;padding:18px;line-height:1.5}
+section{background:#092847;border:1px solid #28577d;border-radius:12px;padding:15px;margin:14px 0}
+h1{font-size:1.4rem}h2{font-size:1.05rem;margin-top:0}
+p,small{color:#bfd0e5}button,a{display:inline-block;border:0;border-radius:8px;padding:11px 14px;background:#147ce0;color:#fff;text-decoration:none;font-weight:650;margin:5px 5px 5px 0}
+button:disabled{opacity:.45}.safe{background:#18794e}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#061b34;border-radius:8px;padding:12px}
+.ok{color:#8de7a6}.warn{color:#ffd184}.bad{color:#ff9b9b}
+label{display:flex;gap:10px;align-items:flex-start;margin:14px 0}input{width:21px;height:21px;flex-shrink:0}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<h1>Copie de sécurité des clients dans IndexedDB</h1>
+<section>
+<strong class="warn">Téléphone 1 uniquement — copie isolée, sans bascule de l’application</strong>
+<p>Cette page prépare une copie des fiches cloud dans IndexedDB. Elle ne modifie pas la liste clients actuelle dans localStorage, n’efface aucune donnée, ne modifie pas Supabase et n’active pas encore IndexedDB dans l’application.</p>
+<p>Ne pas utiliser sur le téléphone 2. Ne pas vider le cache ni les données du navigateur.</p>
+<button id="check">1. Vérifier les conditions (lecture seule)</button>
+</section>
+<section><h2>Rapport</h2><pre id="report">En attente du contrôle.</pre></section>
+<section>
+<h2>Copie contrôlée</h2>
+<p>La copie ne sera autorisée que si la liste locale actuelle est valide, si le cloud contient les 757 fiches attendues, si la file clients est vide et si l’emplacement IndexedDB destiné à cette copie est encore vide. Si un snapshot existe déjà, la page s’arrête sans le remplacer.</p>
+<label><input id="backup" type="checkbox" disabled>Je confirme que le fichier de sauvegarde JSON téléchargé avant la réparation est bien conservé sur ce téléphone.</label>
+<button id="write" class="safe" disabled>2. Copier les fiches cloud dans IndexedDB</button>
+<p id="result"></p>
+</section>
+<p><a href="./diagnostic-sync.html">Diagnostic de synchronisation</a> <a href="./">Retour à l’application</a></p>
+<script>
+(()=>{'use strict';
+const CLIENT='metier_clients_v1_2_corrigee',DEL='metier_clients_deleted_v1',META='chabanal_v2_cloud_meta',QUEUE='chabanal_v2_sync_queue',CFG='chabanal_v2_cloud_config';
+const DB='chabanal_clients_db',DB_VERSION=1,STORE='snapshots',RECORD='clients';
+const $=id=>document.getElementById(id);
+const read=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch{return null}};
+const arr=x=>Array.isArray(x)?x:[];
+const stable=x=>Array.isArray(x)?x.map(stable):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x;
+const sig=x=>JSON.stringify(stable(x));
+let preview=null,busy=false;
+function report(lines){$('report').textContent=lines.join('\n')}
+function controls(){$('check').disabled=busy;$('write').disabled=busy||!preview||!$('backup').checked;$('backup').disabled=busy||!preview}
+function fail(message){$('result').textContent=message;$('result').className='bad'}
+async function connect(){
+ const c=read(CFG);
+ if(!c?.url||!c?.key||!window.supabase)throw Error('Configuration Supabase indisponible. Ouvre l’application et vérifie la connexion.');
+ const sb=window.supabase.createClient(c.url,c.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storage:localStorage}});
+ const s=await sb.auth.getSession();
+ if(s.error)throw s.error;
+ if(!s.data.session)throw Error('Session Supabase absente. Reconnecte-toi depuis l’application puis recommence le contrôle.');
+ return sb;
+}
+async function getCloud(sb){
+ const [c,d]=await Promise.all([
+  sb.from('app_sync_state').select('value_json,version').eq('key_name',CLIENT).maybeSingle(),
+  sb.from('app_sync_state').select('value_json').eq('key_name',DEL).maybeSingle()
+ ]);
+ if(c.error)throw c.error;if(d.error)throw d.error;
+ if(!c.data||!Array.isArray(c.data.value_json))throw Error('La liste clients cloud est absente ou invalide.');
+ return {clients:c.data,deleted:d.data?.value_json??[]};
+}
+function visible(xs,deleted){const gone=new Set(arr(deleted).map(String));return arr(xs).filter(c=>c&&!gone.has(String(c.id??c.clientId??c.uuid??'')))}
+function openDB(){
+ return new Promise((resolve,reject)=>{
+  if(!('indexedDB' in window)){reject(Error('IndexedDB indisponible sur cet appareil.'));return}
+  const req=indexedDB.open(DB,DB_VERSION);
+  req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'id'})};
+  req.onsuccess=()=>{const db=req.result;db.onversionchange=()=>db.close();resolve(db)};
+  req.onerror=()=>reject(req.error||Error('Ouverture IndexedDB impossible.'));
+  req.onblocked=()=>reject(Error('Une autre page bloque IndexedDB. Ferme uniquement les autres onglets de l’application, sans effacer les données.'));
+ });
+}
+async function getRecord(){
+ const db=await openDB();
+ try{return await new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,'readonly'),req=tx.objectStore(STORE).get(RECORD);
+  req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>reject(req.error||Error('Lecture IndexedDB impossible.'));
+ })}finally{db.close()}
+}
+async function putRecord(snapshot){
+ const db=await openDB();
+ try{return await new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,'readwrite');
+  tx.objectStore(STORE).add({id:RECORD,value:snapshot,count:snapshot.length,updatedAt:new Date().toISOString(),source:'supabase-seed'});
+  tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error||Error('Écriture IndexedDB impossible.'));
+  tx.onabort=()=>reject(tx.error||Error('Écriture IndexedDB annulée.'));
+ })}finally{db.close()}
+}
+async function check(){
+ preview=null;$('result').textContent='';controls();busy=true;controls();
+ try{
+  const raw=localStorage.getItem(CLIENT);
+  if(raw===null)throw Error('La copie locale actuelle est introuvable. Aucune modification effectuée.');
+  let local;try{local=JSON.parse(raw)}catch{throw Error('La copie locale actuelle est illisible. Aucune modification effectuée.')}
+  if(!Array.isArray(local))throw Error('La copie locale actuelle n’est pas une liste.');
+  const missing=local.filter(c=>!c||typeof c!=='object'||c.id==null).length;
+  if(missing)throw Error('Fiches locales sans identifiant : '+missing+'. Arrêt.');
+  const ids=local.map(c=>String(c.id)),duplicates=ids.length-new Set(ids).size;
+  // Le doublon Girodet est connu et doit être conservé ; on vérifie les occurrences contre le cloud.
+  if(duplicates!==1)throw Error('Nombre de doublons locaux inattendu : '+duplicates+'. Le diagnostic connu en comporte exactement un (Girodet).');
+  const deleted=read(DEL),queue=read(QUEUE)||{};
+  if(!Array.isArray(deleted))throw Error('Liste locale des suppressions invalide.');
+  if(queue[CLIENT])throw Error('Une file clients est en attente. Arrêt.');
+  const sb=await connect(),cloud=await getCloud(sb);
+  const remote=cloud.clients.value_json;
+  const missingRemote=remote.filter(c=>!c||typeof c!=='object'||c.id==null).length;
+  if(missingRemote)throw Error('Le cloud contient des fiches sans identifiant. Arrêt.');
+  if(sig(arr(deleted).map(String).sort())!==sig(arr(cloud.deleted).map(String).sort()))throw Error('Les listes de suppressions locales et cloud diffèrent. Arrêt.');
+  const localVisible=visible(local,deleted),cloudVisible=visible(remote,cloud.deleted);
+  if(localVisible.length!==752||cloudVisible.length!==757)throw Error('Compteurs inattendus : '+localVisible.length+' local / '+cloudVisible.length+' cloud. Attendu : 752 / 757.');
+  const counts=xs=>{const m=new Map();for(const c of xs){const k=String(c.id??c.clientId??c.uuid??'');m.set(k,(m.get(k)||0)+1)}return m};
+  const localCounts=counts(localVisible),cloudCounts=counts(cloudVisible);
+  const localOnly=[...localCounts.keys()].filter(x=>!cloudCounts.has(x));
+  const cloudOnly=[...cloudCounts.keys()].filter(x=>!localCounts.has(x));
+  if(localOnly.length)throw Error(localOnly.length+' identifiants locaux sont absents du cloud. Arrêt : aucune donnée ne sera remplacée.');
+  if(cloudOnly.length!==5)throw Error('Le nombre de fiches cloud absentes du téléphone n’est plus celui attendu (5).');
+  for(const [id,n] of localCounts){if(cloudCounts.get(id)!==n)throw Error('Nombre d’occurrences différent pour un identifiant partagé. Arrêt.');}
+  const groups=xs=>{const m=new Map();for(const c of xs){const k=String(c.id??c.clientId??c.uuid??'');if(!m.has(k))m.set(k,[]);m.get(k).push(c)}return m};
+  const lg=groups(localVisible),cg=groups(cloudVisible);
+  const bag=xs=>{const m=new Map();for(const x of xs){const k=sig(x);m.set(k,(m.get(k)||0)+1)}return m};
+  let localInterventions=0,cloudInterventions=0;
+  for(const [id,locals] of lg){const remotes=cg.get(id);for(let i=0;i<locals.length;i++){
+   const li=arr(locals[i].interventions),ri=arr(remotes[i].interventions),lb=bag(li),rb=bag(ri);
+   for(const [k,n] of lb){if((rb.get(k)||0)<n)throw Error('Une intervention locale ne se retrouve pas dans le cloud pour un identifiant partagé. Arrêt.')}
+   localInterventions+=li.length;cloudInterventions+=ri.length;
+  }}
+  const record=await getRecord();
+  if(record)throw Error('Un snapshot IndexedDB existe déjà (source : '+(record.source||'non précisée')+'). Il n’a pas été remplacé. Diagnostic nécessaire.');
+  let estimate='non disponible';
+  if(navigator.storage?.estimate){try{const e=await navigator.storage.estimate();estimate=(e.usage??'?')+' / '+(e.quota??'?')+' octets utilisés / quota'}catch{}}
+  preview={localSig:sig(local),deletedSig:sig(deleted),queueSig:sig(queue),cloudSig:sig(remote),cloudDeletedSig:sig(cloud.deleted),version:Number(cloud.clients.version),snapshot:remote,sb};
+  report([
+   'CONTRÔLE RÉUSSI — AUCUNE ÉCRITURE',
+   'Fiches locales conservées : '+local.length+' (752 visibles)',
+   'Fiches cloud à copier : '+remote.length+' (757 visibles)',
+   'Fiches cloud absentes du téléphone : 5',
+   'Fiches sans identifiant : 0',
+   'Doublons connus conservés et appariés au cloud : '+duplicates,
+   'File clients locale : vide',
+   'Liste des suppressions : identique',
+   'Interventions locales vérifiées présentes dans le cloud : '+localInterventions,
+   'Interventions des fiches communes dans le cloud : '+cloudInterventions,
+   'IndexedDB : emplacement clients vide',
+   'Version cloud : '+cloud.clients.version,
+   'Estimation stockage navigateur : '+estimate,
+   'Écriture prévue : ajout d’un seul snapshot IndexedDB, sans remplacement.',
+   'localStorage, Supabase et téléphone 2 : aucune modification prévue.'
+  ]);
+ }catch(e){report(['ARRÊT DE SÉCURITÉ — AUCUNE ÉCRITURE',e?.message||String(e)]);preview=null}
+ finally{busy=false;controls()}
+}
+async function write(){
+ if(!preview||!$('backup').checked||busy)return;
+ if(!confirm('Confirmer la copie des fiches cloud dans le nouvel emplacement IndexedDB du téléphone 1 ? La liste locale actuelle et Supabase ne seront pas modifiés.'))return;
+ busy=true;controls();$('result').textContent='Nouvelle vérification du cloud et du stockage…';
+ try{
+  if(sig(read(CLIENT))!==preview.localSig||sig(read(DEL))!==preview.deletedSig||sig(read(QUEUE)||{})!==preview.queueSig)throw Error('Les données locales ont changé depuis le contrôle. Relance le contrôle en lecture seule.');
+  const fresh=await getCloud(preview.sb);
+  if(Number(fresh.clients.version)!==preview.version||sig(fresh.clients.value_json)!==preview.cloudSig||sig(fresh.deleted)!==preview.cloudDeletedSig)throw Error('Le cloud a changé depuis le contrôle. Aucune écriture IndexedDB.');
+  if(await getRecord())throw Error('Un snapshot IndexedDB est apparu depuis le contrôle. Aucun remplacement effectué.');
+  await putRecord(fresh.clients.value_json);
+  const verify=await getRecord();
+  if(!verify||verify.count!==fresh.clients.value_json.length||sig(verify.value)!==preview.cloudSig)throw Error('La copie a été écrite mais sa relecture ne correspond pas. Ne relance rien : transmettre ce rapport pour diagnostic.');
+  report([
+   'COPIE INDEXEDDB RÉUSSIE — VÉRIFICATION EFFECTUÉE',
+   'Fiches copiées : '+verify.count,
+   'Version cloud copiée : '+preview.version,
+   'Source du snapshot : '+verify.source,
+   'Comparaison intégrale après relecture : identique',
+   'Copie localStorage historique : conservée sans modification.',
+   'Supabase et téléphone 2 : non modifiés.',
+   'IMPORTANT : l’application continue d’utiliser localStorage. Aucun basculement de lecture/synchronisation n’est activé.'
+  ]);
+  $('result').textContent='Copie de sécurité IndexedDB terminée et vérifiée. Ne lance pas encore de synchronisation ni de bascule : transmets ce résultat.';$('result').className='ok';preview=null;
+ }catch(e){fail('ARRÊT : '+(e?.message||String(e))+' Ne relance pas avant un nouveau diagnostic.')}
+ finally{busy=false;controls()}
+}
+$('check').addEventListener('click',check);
+$('backup').addEventListener('change',controls);
+$('write').addEventListener('click',write);
+controls();
+})();
+</script>
+</body>
+</html>
