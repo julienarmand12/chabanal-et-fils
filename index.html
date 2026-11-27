@@ -150,7 +150,8 @@ header{background:linear-gradient(90deg,#140e24,#201432 68%,#160f2c);border-bott
 .piece-notification-delete{padding:7px 10px;background:rgba(128,29,29,.2);color:#ffc2c2;border:1px solid #913e3e;font-size:12px}
 .piece-notification-delete:hover{background:rgba(128,29,29,.4)}
 @media(max-width:650px){#clientBody .client-summary-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#clientBody .client-summary-stats .card{padding:8px}}
-</style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</style><script src="./storage-compression.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
 /* v1.1 — Date locale de l'appareil; fonctionnement automatique même après minuit. */
@@ -1233,6 +1234,10 @@ function applyDeletedClientMarkers(){
   return false;
 }
 function backupBeforeRemote(k,old,remoteVersion){
+  // Les clients du cloud sont la référence : ne pas dupliquer localement
+  // plusieurs milliers de fiches avant leur récupération, car cette copie
+  // supplémentaire déclenche précisément le dépassement de quota.
+  if(k===CLIENTS_KEY)return true;
   if(old===null)return true;
   const id=BACKUP_PREFIX+k;
   try{if(localStorage.getItem(id)===null)nativeSet.call(localStorage,id,JSON.stringify({at:new Date().toISOString(),cloudVersion:remoteVersion,data:old}));return true}
