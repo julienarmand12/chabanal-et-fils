@@ -1,0 +1,31 @@
+<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Réconciliation Gasquet</title><style>body{font:16px system-ui;background:#071b32;color:#edf5ff;max-width:760px;margin:auto;padding:20px}button{padding:14px;margin:8px 0;background:#176bc0;color:white;border:0;border-radius:8px}button:disabled{opacity:.4}pre{white-space:pre-wrap;background:#102c49;padding:16px;border-radius:8px}</style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><h1>Réconciliation Gasquet</h1><p>Téléphone 2 uniquement. Fermez les autres onglets et l'application avant de commencer. Conservez la sauvegarde JSON. Aucune écriture cloud.</p><button id="run">Simuler la réconciliation</button> <button id="apply" disabled>Confirmer la réconciliation locale</button><pre id="out">En attente.</pre><script>
+const C='metier_clients_v1_2_corrigee',D='metier_clients_deleted_v1',Q='chabanal_v2_sync_queue',M='chabanal_v2_cloud_meta',ID='client_1795599958525',K='chabanal_v2_cloud_config';
+const $=x=>document.getElementById(x), read=k=>JSON.parse(localStorage.getItem(k)||'null'), stable=x=>Array.isArray(x)?x.map(stable):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x, sig=x=>JSON.stringify(stable(x)), eq=(a,b)=>sig(a)===sig(b), assert=(v,m)=>{if(!v)throw Error(m)}, bag=a=>a.map(sig).sort();
+let approved=null;
+async function check(){
+ const raw=Object.fromEntries([C,D,Q,M].map(k=>[k,localStorage.getItem(k)])), local=JSON.parse(raw[C]), del=JSON.parse(raw[D]), q=JSON.parse(raw[Q]), meta=JSON.parse(raw[M]), cfg=read(K);
+ assert(Array.isArray(local)&&Array.isArray(del)&&q&&meta,'Stockage local inattendu');
+ assert(Number(meta[C])===555,'Version locale différente de 555');
+ assert(Object.keys(q).length===1&&q[C],'File différente de la file attendue');
+ const p=q[C], changes=p.patch?.changes;
+ assert(p.reason==='automatic-write'&&p.queuedAt==='2026-11-25T10:30:55.066Z'&&p.patch?.kind==='clients'&&changes&&Object.keys(changes).length===1&&changes[ID],'Patch différent du patch sauvegardé');
+ assert(cfg?.url==='https://kqdsrezgwlkiezxyqkiv.supabase.co'&&cfg.key,'Configuration production inattendue');
+ const sb=window.supabase.createClient(cfg.url,cfg.key,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storage:localStorage}});
+ // Read existing session using standard persisted client; no data writes to application keys.
+ const authClient=window.supabase.createClient(cfg.url,cfg.key,{auth:{persistSession:true,autoRefreshToken:false,detectSessionInUrl:false,storage:localStorage}});
+ const ss=await authClient.auth.getSession();assert(!ss.error&&ss.data.session,'Session absente');
+ const [a,b]=await Promise.all([authClient.from('app_sync_state').select('value_json,version').eq('key_name',C).single(),authClient.from('app_sync_state').select('value_json,version').eq('key_name',D).single()]);
+ assert(!a.error&&!b.error,'Lecture cloud impossible');assert(Number(a.data.version)===557&&Number(b.data.version)===27,'Version cloud modifiée');
+ const cloud=a.data.value_json, cd=b.data.value_json;assert(Array.isArray(cloud)&&Array.isArray(cd)&&eq(bag(del),bag(cd)),'Suppressions différentes');
+ const l=local.filter(x=>x.id===ID),r=cloud.filter(x=>x.id===ID);
+ assert(l.length===1&&r.length===1&&eq(l[0],r[0])&&eq(changes[ID].after,l[0]),'Fiche Gasquet ou patch différent');
+ assert(l[0].city==='BLV'&&eq(l[0].interventions,[{date:'25/11/2026',iso:'2026-11-25',description:'Entretien pompe a chaleur air air '}]),'Intervention ou ville inattendue');
+ const visible=(a,d)=>a.filter(x=>!d.includes(x.id)), lv=visible(local,del),cv=visible(cloud,cd);
+ assert(lv.length===758&&cv.length===758&&eq(bag(lv),bag(cv)),'Les ensembles de fiches actives ne sont pas strictement identiques');
+ assert(lv.reduce((n,x)=>n+(x.interventions||[]).length,0)===3798,'Nombre interventions inattendu');
+ assert(Object.keys(raw).every(k=>localStorage.getItem(k)===raw[k]),'Stockage modifié pendant le contrôle');
+ return {raw,q,meta};
+}
+$('run').onclick=async()=>{approved=null;$('apply').disabled=true;$('run').disabled=true;try{approved=await check();$('out').textContent='SIMULATION VALIDÉE\n758 fiches actives identiques (doublons compris)\n3798 interventions\nGasquet et patch identiques\nSuppressions identiques\nVersion cloud 557\nAucune écriture locale ou cloud effectuée.';$('apply').disabled=false}catch(e){$('out').textContent='ARRÊT : '+e.message+'\nAucune correction effectuée.'}finally{$('run').disabled=false}};
+$('apply').onclick=async()=>{if(!approved||!confirm('Retirer uniquement le patch Gasquet déjà enregistré et actualiser la version locale ?'))return;$('apply').disabled=true;$('run').disabled=true;let removed=false;try{const v=await check();assert(eq(v.raw,approved.raw),'Données modifiées depuis la simulation');delete v.q[C];localStorage.setItem(Q,JSON.stringify(v.q));removed=true;v.meta[C]=557;localStorage.setItem(M,JSON.stringify(v.meta));assert(!read(Q)[C]&&Number(read(M)[C])===557,'Contrôle final échoué');$('out').textContent='RÉCONCILIATION LOCALE TERMINÉE\nFile clients : vide\nVersion locale : 557\n758 fiches / 3798 interventions conservées\nAucune écriture cloud. Ne relancez pas encore la synchronisation.'}catch(e){$('out').textContent='ARRÊT : '+e.message+(removed?'\nPatch retiré après validation, version locale à contrôler.':'\nPatch non retiré.')+'\nNe relancez pas la synchronisation.'}finally{approved=null;$('run').disabled=false}};
+</script></html>
