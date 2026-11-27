@@ -1,0 +1,31 @@
+<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Comparaison clients V2 — lecture seule</title><style>body{font:16px system-ui;background:#0c1b2c;color:#eaf3ff;max-width:760px;margin:auto;padding:20px}button{padding:14px 20px;border:0;border-radius:9px;background:#3c91d7;color:#fff;font-weight:700}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#19334b;padding:18px;border-radius:12px}small{color:#b8cadd}</style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><h2>Comparaison des fiches clients — V2</h2><p>Sur le téléphone 1, dans le navigateur de l'application. Comparaison des fiches locales avec les fiches actives Supabase, sans modifier les données métier.</p><button id="go">Comparer — lecture seule</button><pre id="out">En attente.</pre><small>Le résultat ne contient ni noms, ni adresses, ni identifiants de clients. Ne transmettez pas les données brutes.</small><script>
+'use strict';
+const C='metier_clients_v1_2_corrigee',D='metier_clients_deleted_v1',Q='chabanal_v2_sync_queue',M='chabanal_v2_cloud_meta',K='chabanal_v2_cloud_config';
+const read=k=>localStorage.getItem(k),parse=k=>JSON.parse(read(k)||'null');
+function normalize(x){if(Array.isArray(x))return x.map(normalize);if(x&&typeof x==='object')return Object.fromEntries(Object.keys(x).sort().map(k=>[k,normalize(x[k])]));return x}
+function signature(x){return JSON.stringify(normalize(x))}
+function counts(items){let m=new Map();for(let x of items){let s=signature(x);m.set(s,(m.get(s)||0)+1)}return m}
+function diff(a,b){let n=0;for(let [k,v] of a)n+=Math.max(0,v-(b.get(k)||0));return n}
+function byId(a){let m=new Map();for(let x of a){let id=String(x?.id??'');if(!m.has(id))m.set(id,[]);m.get(id).push(x)}return m}
+function summarize(a,b){let A=byId(a),B=byId(b),ids=new Set([...A.keys(),...B.keys()]),localOnly=0,cloudOnly=0,changed=0,same=0,dupLocal=0,dupCloud=0;for(let id of ids){let la=A.get(id)||[],cb=B.get(id)||[];if(la.length>1)dupLocal+=la.length-1;if(cb.length>1)dupCloud+=cb.length-1;if(!la.length)localOnly+=cb.length;else if(!cb.length)cloudOnly+=la.length;else{let aa=counts(la),bb=counts(cb);if(diff(aa,bb)||diff(bb,aa))changed++;else same++}}return {fichesUniquementCloud:localOnly,fichesUniquementTelephone:cloudOnly,identifiantsCommunsDifferents:changed,identifiantsCommunsIdentiques:same,doublonsIdTelephone:dupLocal,doublonsIdCloud:dupCloud}}
+const go=document.getElementById('go'),out=document.getElementById('out');
+go.onclick=async()=>{go.disabled=true;out.textContent='Comparaison en cours…';try{
+const snapshot=Object.fromEntries([C,D,Q,M].map(k=>[k,read(k)])),local=JSON.parse(snapshot[C]||'null'),del=JSON.parse(snapshot[D]||'null'),queue=JSON.parse(snapshot[Q]||'{}'),meta=JSON.parse(snapshot[M]||'{}'),cfg=parse(K);
+if(!Array.isArray(local)||!Array.isArray(del))throw Error('Fiches locales ou suppressions absentes');
+if(!cfg?.url||!cfg?.key)throw Error('Configuration Supabase absente');
+if(cfg.url!=='https://kqdsrezgwlkiezxyqkiv.supabase.co')throw Error('Projet Supabase inattendu');
+const sb=window.supabase.createClient(cfg.url,cfg.key,{auth:{persistSession:true,autoRefreshToken:false,detectSessionInUrl:false,storage:localStorage}});
+const session=await sb.auth.getSession();if(session.error||!session.data.session)throw Error('Session Supabase absente');
+const [a,b]=await Promise.all([sb.from('app_sync_state').select('value_json,version').eq('key_name',C).single(),sb.from('app_sync_state').select('value_json,version').eq('key_name',D).single()]);
+if(a.error||b.error)throw Error('Lecture Supabase impossible');
+if(!Array.isArray(a.data.value_json)||!Array.isArray(b.data.value_json))throw Error('Format cloud inattendu');
+const removed=new Set(b.data.value_json.map(x=>typeof x==='string'?x:x?.id).filter(x=>x!=null).map(String));
+const cloud=a.data.value_json.filter(x=>!removed.has(String(x?.id??'')));
+const test=x=>JSON.stringify(x).toUpperCase().includes('TEST SYNCHRO V2');
+const localTest=local.filter(test),cloudTest=cloud.filter(test);
+const localBy=byId(local),cloudBy=byId(cloud);const changedIds=[...new Set([...localBy.keys(),...cloudBy.keys()])].filter(id=>{let la=localBy.get(id)||[],cb=cloudBy.get(id)||[];return la.length&&cb.length&&(diff(counts(la),counts(cb))||diff(counts(cb),counts(la)))});const testIds=new Set([...localTest,...cloudTest].map(x=>String(x?.id??'')));const changedIsOnlyTest=changedIds.length===1&&testIds.has(changedIds[0]);const testField=x=>x?.addressComplement??x?.complementAdresse??x?.address2??x?.complement_adresse??null;const testFieldCloudContainsExpected=cloudTest.length===1&&JSON.stringify(cloudTest[0]).includes('TEST RETOUR TEL 2');
+const report={date:new Date().toISOString(),versionLocaleConnue:meta[C]??null,versionCloud:a.data.version,versionSuppressionsCloud:b.data.version,fichesTelephone:local.length,fichesActivesCloud:cloud.length,fileClientsEnAttente:!!queue[C],...summarize(local,cloud),ficheTestPresenteTelephone:localTest.length>0,ficheTestPresenteCloud:cloudTest.length>0,differenceUniqueConcerneTest:changedIsOnlyTest,modificationTestConfirmeeCloud:testFieldCloudContainsExpected,ficheTestIdentique:localTest.length===1&&cloudTest.length===1&&signature(localTest[0])===signature(cloudTest[0]),nombreFichesTestTelephone:localTest.length,nombreFichesTestCloud:cloudTest.length,comparaisonSuppressionsIdentique:signature(del.map(String).sort())===signature(b.data.value_json.map(x=>typeof x==='string'?x:x?.id).map(String).sort())};
+if(Object.keys(snapshot).some(k=>read(k)!==snapshot[k]))throw Error('Données locales modifiées pendant la comparaison, résultat abandonné');
+out.textContent=JSON.stringify(report,null,2)+'\n\nAucune modification des fiches clients ni des données cloud.';
+}catch(e){out.textContent='DIAGNOSTIC NON TERMINÉ : '+e.message}finally{go.disabled=false}};
+</script></html>
