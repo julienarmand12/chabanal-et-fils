@@ -1,0 +1,38 @@
+<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Réconciliation téléphone 1</title><style>body{font:16px system-ui;background:#071b32;color:white;padding:18px}button{padding:13px;margin:8px 4px}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style><h1>Téléphone 1 — remise à niveau sécurisée</h1><p>Fermez l'application principale et ses autres onglets. Effectuez la simulation avant la correction.</p><button id="test">Simuler — lecture seule</button><button id="apply" disabled>Appliquer la remise à niveau locale</button><pre id="out"></pre><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script>
+const C='metier_clients_v1_2_corrigee',D='metier_clients_deleted_v1',Q='chabanal_v2_sync_queue',M='chabanal_v2_cloud_meta',K='chabanal_v2_cloud_config',B='chabanal_v2_local_backup_20261011_'+C;
+const $=x=>document.getElementById(x),read=k=>JSON.parse(localStorage.getItem(k)||'null'),assert=(v,m)=>{if(!v)throw Error(m)};
+const stable=x=>Array.isArray(x)?x.map(stable):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x,sig=x=>JSON.stringify(stable(x)),eq=(a,b)=>sig(a)===sig(b),count=a=>a.reduce((n,x)=>n+(x.interventions||[]).length,0);
+const bag=a=>a.map(sig).sort(), group=a=>{let m=new Map;for(const x of a){if(!m.has(x.id))m.set(x.id,[]);m.get(x.id).push(x)}return m};
+function included(a,b){const remain=bag(b);for(const x of bag(a)){const i=remain.indexOf(x);if(i<0)return false;remain.splice(i,1)}return true}
+function subsumed(a,b){for(const k of Object.keys(a)){if(k==='interventions'){if(!included(a[k]||[],b[k]||[]))return false;continue}if(eq(a[k],b[k]))continue;if((a[k]===undefined||a[k]===null||a[k]==='')&&b[k]!==undefined)continue;return false}return true}
+let approved=null;
+async function verify(){const raw=Object.fromEntries([C,D,Q,M].map(k=>[k,localStorage.getItem(k)])),local=read(C),del=read(D),q=read(Q),meta=read(M),cfg=read(K);
+assert(Array.isArray(local)&&Array.isArray(del)&&q&&meta,'Stockage local inattendu');
+assert(local.length===752&&count(local)===3770&&Number(meta[C])===496&&Object.keys(q).length===0,'Etat local modifié');
+assert(localStorage.getItem(B)===null,'Ancienne archive réapparue : arrêt');
+assert(cfg?.url==='https://kqdsrezgwlkiezxyqkiv.supabase.co'&&cfg.key,'Configuration cloud inattendue');
+const sb=window.supabase.createClient(cfg.url,cfg.key,{auth:{persistSession:true,autoRefreshToken:false,detectSessionInUrl:false,storage:localStorage}});
+const session=await sb.auth.getSession();assert(!session.error&&session.data.session,'Session absente');
+const [a,b]=await Promise.all([sb.from('app_sync_state').select('value_json,version').eq('key_name',C).single(),sb.from('app_sync_state').select('value_json,version').eq('key_name',D).single()]);
+assert(!a.error&&!b.error,'Lecture cloud impossible');assert(Number(a.data.version)===557&&Number(b.data.version)===27,'Versions cloud modifiées');
+const cd=b.data.value_json;assert(Array.isArray(cd)&&eq(bag(del),bag(cd)),'Suppressions divergentes');
+const cloud=a.data.value_json.filter(x=>!cd.includes(x.id));
+assert(cloud.length===758&&count(cloud)===3798,'Totaux cloud inattendus');
+const L=group(local),R=group(cloud);let added=0,missing=0,extra=0,divergent=0;
+for(const [id,ls] of L){const rs=R.get(id);assert(rs,'Fiche locale absente du cloud');if(ls.length!==1||rs.length!==1){assert(eq(bag(ls),bag(rs)),'Doublon divergent : '+id);continue}assert(subsumed(ls[0],rs[0]),'Données locales non préservées : '+id);added+=(rs[0].interventions||[]).length-(ls[0].interventions||[]).length}
+for(const [id,rs] of R)if(!L.has(id))extra+=rs.length;
+assert(extra===6&&added===14,'Différences inattendues');
+const current=Object.entries(Object.fromEntries(Array.from({length:localStorage.length},(_,i)=>{const k=localStorage.key(i);return[k,localStorage.getItem(k)]}))).reduce((n,[k,v])=>n+2*(k.length+v.length),0);
+const projected=current+2*(JSON.stringify(cloud).length-raw[C].length);
+assert(projected<9800000,'Marge de stockage insuffisante');
+assert(Object.keys(raw).every(k=>localStorage.getItem(k)===raw[k]),'Stockage modifié pendant lecture');
+return{raw,cloud,current,projected};
+}
+$('test').onclick=async()=>{approved=null;$('apply').disabled=true;$('test').disabled=true;try{approved=await verify();$('out').textContent='SIMULATION VALIDÉE\n752 fiches locales incluses dans le cloud\n6 fiches cloud supplémentaires\n14 interventions supplémentaires sur fiches communes\n758 fiches / 3798 interventions\nVersion cloud 557\nStockage projeté : '+approved.projected+' octets estimés\nAucune écriture effectuée.';$('apply').disabled=false}catch(e){$('out').textContent='ARRÊT : '+e.message+'\nAucune correction.'}finally{$('test').disabled=false}};
+$('apply').onclick=async()=>{if(!approved||!confirm('Mettre à niveau uniquement les fiches locales et la version connue ?'))return;$('apply').disabled=true;$('test').disabled=true;let clientsWritten=false;try{const v=await verify();assert(eq(v.raw,approved.raw)&&eq(v.cloud,approved.cloud),'Données modifiées depuis la simulation');
+const next=JSON.stringify(v.cloud);localStorage.setItem(C,next);clientsWritten=true;
+const m=JSON.parse(v.raw[M]);m[C]=557;localStorage.setItem(M,JSON.stringify(m));
+assert(localStorage.getItem(C)===next&&Number(read(M)[C])===557&&Object.keys(read(Q)).length===0,'Contrôle final échoué');
+$('out').textContent='REMISE À NIVEAU LOCALE TERMINÉE\n758 fiches / 3798 interventions / v557\nFile vide\nAncienne archive absente\nAucune écriture cloud\nNe relancez pas encore l’application principale.';
+}catch(e){if(clientsWritten){try{localStorage.setItem(C,approved.raw[C]);localStorage.setItem(M,approved.raw[M]);$('out').textContent='ARRÊT : '+e.message+'\nRestauration locale tentée. Contrôlez les données avant tout redémarrage.'}catch(r){$('out').textContent='ARRÊT CRITIQUE : '+e.message+' / '+r.message+'\nNE RELANCEZ PAS.'}}else $('out').textContent='ARRÊT : '+e.message+'\nAucune écriture effectuée.'}finally{approved=null;$('test').disabled=false}};
+</script></html>
