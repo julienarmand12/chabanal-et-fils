@@ -46,10 +46,10 @@ jobs:
           assert s.count(needle2)==1
           s=s.replace(needle2,replacement2)
           needle3='''      if(local!==null&&!sameValue(k,local,next)){
-            if(!backupBeforeRemote(k,local,rv)){markConflict(k,"backup-required");continue}
-          }
-          if(!sameValue(k,local,next)){if(next===null)rawDelete(k);else rawSet(k,next);needsRefresh=true}
-          // En cas de différences de format seulement, conserver le contenu local normalisé.'''
+                if(!backupBeforeRemote(k,local,rv)){markConflict(k,"backup-required");continue}
+              }
+              if(!sameValue(k,local,next)){if(next===null)rawDelete(k);else rawSet(k,next);needsRefresh=true}
+              // En cas de différences de format seulement, conserver le contenu local normalisé.'''
           replacement3='''      if(local!==null&&!sameValue(k,local,next)){
                   if(k===CLIENTS_KEY){
                     // Autoriser le téléchargement seulement si les octets locaux sont
