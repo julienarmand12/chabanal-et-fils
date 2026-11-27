@@ -28,7 +28,7 @@ const removed=new Set(deleted.map(x=>String(typeof x==='string'?x:x?.id)));
 const cloud=cloudRaw.filter(x=>!removed.has(String(x?.id??'')));
 if(local.length!==759||cloud.length!==759)throw Error('Totaux inattendus');
 const test=x=>JSON.stringify(x).toUpperCase().includes('TEST SYNCHRO V2'),lt=local.filter(test),ct=cloud.filter(test);
-if(lt.length!==1||ct.length!==1||String(lt[0].id)!==String(ct[0].id)||!JSON.stringify(ct[0]).includes('TEST RETOUR TEL 2'))throw Error('Fiche TEST non validée');
+if(lt.length!==1||ct.length!==1||String(lt[0].id)!==String(ct[0].id)||!JSON.stringify(ct[0]).toUpperCase().includes('TEST RETOUR TEL 2'))throw Error('Fiche TEST non validée');
 const otherL=local.filter(x=>String(x?.id)!==String(lt[0].id)),otherC=cloud.filter(x=>String(x?.id)!==String(ct[0].id));
 if(signature([...otherL].map(signature).sort())!==signature([...otherC].map(signature).sort()))throw Error('Une autre fiche est différente : arrêt');
 const result=local.map(x=>String(x?.id)===String(lt[0].id)?ct[0]:x);
