@@ -1,0 +1,51 @@
+name: Correctif ponctuel synchronisation V2
+on:
+  push:
+    paths:
+      - '.github/workflows/correctif-sync-v2-20261127.yml'
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'Préparer correctif ponctuel stockage V2'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Vérifier et corriger index.html
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          p=Path("index.html")
+          b=p.read_bytes()
+          sha=hashlib.sha1(b"blob "+str(len(b)).encode()+b"\0"+b).hexdigest()
+          assert sha=="a2fccd05a4bb8594cac7c1f084760a219e4815b5", "Version index.html inattendue, arrêt sans modification"
+          s=b.decode("utf-8")
+          needle='function backupBeforeRemote(k,old,remoteVersion){\n  if(old===null)return true;'
+          replacement='''function backupBeforeRemote(k,old,remoteVersion){
+  if(old===null)return true;
+  // Correctif 2026-11-27 : ne jamais recréer automatiquement une copie
+  // volumineuse des fiches clients dans localStorage. En cas de divergence,
+  // la synchronisation s'arrête en conflit sans écraser les données locales.
+  // L'utilisateur conserve ses sauvegardes exportées hors du navigateur.
+  if(k===CLIENTS_KEY){
+    console.warn("Téléchargement clients divergent bloqué : sauvegarde externe requise",remoteVersion);
+    setStatus("⚠️ Clients divergents : données locales conservées, contrôle requis","cloud-warn");
+    return false;
+  }'''
+          assert s.count(needle)==1, "Point d'insertion inattendu"
+          s=s.replace(needle,replacement)
+          expected="9d13cc5b4a818efbf0891eb42e758fb84d9853c4"
+          out=s.encode("utf-8")
+          assert hashlib.sha1(b"blob "+str(len(out)).encode()+b"\0"+out).hexdigest()==expected, "Le résultat ne correspond pas au fichier corrigé"
+          p.write_bytes(out)
+          PY
+      - name: Publier le correctif
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Sécuriser les sauvegardes clients V2 sans archive volumineuse"
+          git push
