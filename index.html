@@ -1234,6 +1234,15 @@ function applyDeletedClientMarkers(){
 }
 function backupBeforeRemote(k,old,remoteVersion){
   if(old===null)return true;
+  // Correctif 2026-11-27 : ne jamais recréer automatiquement une copie
+  // volumineuse des fiches clients dans localStorage. En cas de divergence,
+  // la synchronisation s'arrête en conflit sans écraser les données locales.
+  // L'utilisateur conserve ses sauvegardes exportées hors du navigateur.
+  if(k===CLIENTS_KEY){
+    console.warn("Téléchargement clients divergent bloqué : sauvegarde externe requise",remoteVersion);
+    setStatus("⚠️ Clients divergents : données locales conservées, contrôle requis","cloud-warn");
+    return false;
+  }
   const id=BACKUP_PREFIX+k;
   try{if(localStorage.getItem(id)===null)nativeSet.call(localStorage,id,JSON.stringify({at:new Date().toISOString(),cloudVersion:remoteVersion,data:old}));return true}
   catch(e){console.error("Sauvegarde locale impossible",k,e);setStatus("⚠️ Stockage saturé : données locales préservées","cloud-warn");return false}
