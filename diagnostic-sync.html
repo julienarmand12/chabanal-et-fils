@@ -19,7 +19,7 @@ details{margin:8px 0;border-top:1px solid #235177;padding-top:8px}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script></head>
 <body>
 <h1>Diagnostic de synchronisation</h1>
-<p class="muted">Chabanal et fils · Lecture seule · V1.0. Ce contrôle ne modifie ni les fiches clients, ni les interventions, ni la base Supabase.</p>
+<p class="muted">Chabanal et fils · Lecture seule · V1.1 — détail des interventions. Ce contrôle ne modifie ni les fiches clients, ni les interventions, ni la base Supabase.</p>
 <p><a class="btn" href="./">Retour à l'application</a><button id="run">Analyser cet appareil</button><button id="copy" disabled>Copier le résumé</button></p>
 <section><div id="status">Appuyer sur « Analyser cet appareil ».</div></section>
 <section><h2>Données locales</h2><div id="local"></div></section>
@@ -43,16 +43,18 @@ const overview=(clients,del)=>{const deleted=new Set(arr(del));const visible=arr
 const text=(id,v)=>$(id).textContent=v;
 const line=(parent,label,value)=>{const el=document.createElement('div');const b=document.createElement('strong');b.textContent=label+' : ';el.append(b,document.createTextNode(String(value)));parent.append(el)};
 const versionValue=(meta,k)=>meta&&typeof meta==='object'?Number(meta[k]||0):0;
+function interventionLabel(x,index){const key=x&&(x.id||x.iso||x.date||x.created_at);return key?String(key):'sans-identifiant (position '+(index+1)+')'}
 function compare(local,remote){const lm=new Map(local.clients.map(c=>[String(c.id),c])),rm=new Map(remote.clients.map(c=>[String(c.id),c]));
- const issues=[];let onlyHere=0,onlyCloud=0,changed=0;for(const id of new Set([...lm.keys(),...rm.keys()])){
-  const l=lm.get(id),r=rm.get(id);if(!l){onlyCloud++;issues.push({name:r.name||id,info:'Fiche uniquement dans le cloud'});continue}
-  if(!r){onlyHere++;issues.push({name:l.name||id,info:'Fiche uniquement sur cet appareil'});continue}
+ const issues=[];let onlyHere=0,onlyCloud=0,changed=0;
+ for(const id of new Set([...lm.keys(),...rm.keys()])){
+  const l=lm.get(id),r=rm.get(id);
+  if(!l){onlyCloud++;issues.push({id,name:r.name||id,info:'Fiche uniquement dans le cloud',localCount:0,cloudCount:arr(r.interventions).length,localMissing:[],cloudMissing:[]});continue}
+  if(!r){onlyHere++;issues.push({id,name:l.name||id,info:'Fiche uniquement sur cet appareil',localCount:arr(l.interventions).length,cloudCount:0,localMissing:[],cloudMissing:[]});continue}
   const li=arr(l.interventions),ri=arr(r.interventions);
-  const make=xs=>{const m=new Map();for(const x of xs){const s=signature(x);m.set(s,(m.get(s)||0)+1)}return m};
-  const a=make(li),b=make(ri);let localOnly=0,cloudOnly=0;
-  for(const [s,n] of a)localOnly+=Math.max(0,n-(b.get(s)||0));
-  for(const [s,n] of b)cloudOnly+=Math.max(0,n-(a.get(s)||0));
-  if(localOnly||cloudOnly){changed++;issues.push({name:l.name||r.name||id,info:li.length+' locale(s), '+ri.length+' cloud · '+localOnly+' absente(s) du cloud, '+cloudOnly+' absente(s) du téléphone'})}
+  const unmatched=(source,other)=>{const counts=new Map();for(const x of other){const s=signature(x);counts.set(s,(counts.get(s)||0)+1)}
+   const out=[];source.forEach((x,index)=>{const s=signature(x),n=counts.get(s)||0;if(n>0)counts.set(s,n-1);else out.push(interventionLabel(x,index))});return out};
+  const localMissing=unmatched(ri,li),cloudMissing=unmatched(li,ri);
+  if(localMissing.length||cloudMissing.length){changed++;issues.push({id,name:l.name||r.name||id,info:li.length+' locale(s), '+ri.length+' cloud · '+cloudMissing.length+' absente(s) du cloud, '+localMissing.length+' absente(s) du téléphone',localCount:li.length,cloudCount:ri.length,localMissing,cloudMissing})}
  }
  return {onlyHere,onlyCloud,changed,issues};
 }
@@ -100,7 +102,7 @@ $('run').onclick=async()=>{
   line(diff,'Clients absents du cloud',d.onlyHere);
   line(diff,'Clients avec interventions différentes',d.changed);
   line(diff,'Nombre de fiches présentant une différence',d.issues.length);
-  if(d.issues.length){const det=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Voir les clients concernés (uniquement sur votre écran)';det.append(summary);for(const x of d.issues.slice(0,100)){const p=document.createElement('p');p.textContent=x.name+' — '+x.info;det.append(p)}if(d.issues.length>100){const p=document.createElement('p');p.textContent='… et '+(d.issues.length-100)+' autres';det.append(p)}diff.append(det)}
+  if(d.issues.length){const det=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Voir le détail des fiches et interventions (lecture seule)';det.append(summary);for(const x of d.issues.slice(0,100)){const block=document.createElement('div');block.style.borderTop='1px solid #235177';block.style.padding='8px 0';const h=document.createElement('strong');h.textContent=x.name+' — '+x.info;block.append(h);if(x.cloudMissing?.length){const p=document.createElement('p');p.textContent='Présentes localement mais absentes du cloud : '+x.cloudMissing.join(', ');block.append(p)}if(x.localMissing?.length){const p=document.createElement('p');p.textContent='Présentes dans le cloud mais absentes du téléphone : '+x.localMissing.join(', ');block.append(p)}det.append(block)}if(d.issues.length>100){const p=document.createElement('p');p.textContent='… et '+(d.issues.length-100)+' autres';det.append(p)}diff.append(det)}
  }
  else text('diff','Comparaison indisponible tant que la connexion au cloud n’a pas été vérifiée.');
  lastSummary=[
@@ -114,7 +116,8 @@ $('run').onclick=async()=>{
   'Différences clients : '+issueCount,
   'Doublons stricts locaux : '+l.exactDuplicates,
   'Connexion cloud : '+cloudResult,
-  'Erreur : '+cloudError
+  'Erreur : '+cloudError,
+  ...(remote?compare(l,remote).issues.map(x=>'FICHE '+x.name+' ['+x.id+'] — '+x.info+' | absentes téléphone: '+(x.localMissing||[]).join(', ')+' | absentes cloud: '+(x.cloudMissing||[]).join(', ')):[])
  ].join('\n');
  const pre=document.createElement('pre');pre.textContent=lastSummary;diff.append(pre);
  $('copy').disabled=false;

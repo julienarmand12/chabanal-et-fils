@@ -99,9 +99,9 @@
     if (!global.ChabanalV2DeltaSync) throw new Error("Moteur delta V2 indisponible.");
     busy = true;
     try {
-      if (typeof global.metierMediaSupabase !== "function") throw new Error("Accès Supabase authentifié indisponible.");
-      const client = await global.metierMediaSupabase();
-      if (!client) throw new Error("Connexion Supabase non authentifiée. Connectez-vous d’abord à la base métier.");
+      if (typeof global.ChabanalV2Test2.getAuthenticatedClient !== "function") throw new Error("Connecteur Supabase Test 2 indisponible.");
+      const client = await global.ChabanalV2Test2.getAuthenticatedClient();
+      if (!client) throw new Error("Connexion Supabase non authentifiée. Connectez-vous d’abord à Supabase Test 2.");
       const sync = global.ChabanalV2DeltaSync.create(client);
       const result = await sync.pullDelta(async event => { await stage(event); });
       await setMeta({ lastPullAt: new Date().toISOString(), cursor: result.cursor, processed: result.processed });
