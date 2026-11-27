@@ -7,7 +7,7 @@ permissions:
   contents: write
 jobs:
   apply:
-    if: github.event.head_commit.message == 'Reparer indentation YAML workflow V2'
+    if: github.event.head_commit.message == 'Corriger correspondance bloc reception V2'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,10 +46,10 @@ jobs:
           assert s.count(needle2)==1
           s=s.replace(needle2,replacement2)
           needle3='''      if(local!==null&&!sameValue(k,local,next)){
-            if(!backupBeforeRemote(k,local,rv)){markConflict(k,"backup-required");continue}
-          }
-          if(!sameValue(k,local,next)){if(next===null)rawDelete(k);else rawSet(k,next);needsRefresh=true}
-          // En cas de différences de format seulement, conserver le contenu local normalisé.'''
+        if(!backupBeforeRemote(k,local,rv)){markConflict(k,"backup-required");continue}
+      }
+      if(!sameValue(k,local,next)){if(next===null)rawDelete(k);else rawSet(k,next);needsRefresh=true}
+      // En cas de différences de format seulement, conserver le contenu local normalisé.'''
           replacement3='''      if(local!==null&&!sameValue(k,local,next)){
                   if(k===CLIENTS_KEY){
                     // Autoriser le téléchargement seulement si les octets locaux sont
