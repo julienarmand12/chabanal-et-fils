@@ -1,0 +1,81 @@
+name: Reception clients V2 securisee
+on:
+  push:
+    paths:
+      - '.github/workflows/reception-clients-v2.yml'
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'Installer reception clients V2 avec empreinte locale'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Corriger le moteur V2
+        run: |
+          from pathlib import Path
+          import hashlib
+          p=Path("index.html")
+          b=p.read_bytes()
+          sha=hashlib.sha1(b"blob "+str(len(b)).encode()+b"\0"+b).hexdigest()
+          assert sha=="9d13cc5b4a818efbf0891eb42e758fb84d9853c4", "Version inattendue"
+          s=b.decode("utf-8")
+          needle='function backupBeforeRemote(k,old,remoteVersion){'
+          insert='''const CLIENTS_BASELINE_KEY="chabanal_v2_clients_verified_baseline_sha256";
+          async function clientFingerprint(raw){
+            const bytes=new TextEncoder().encode(raw===null?"":raw);
+            return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes)),x=>x.toString(16).padStart(2,"0")).join("");
+          }
+          '''
+          assert s.count(needle)==1
+          s=s.replace(needle,insert+needle)
+          needle2='''    if(known===0||rv>known){
+                // Ne pas remplacer une fiche dont la saisie n'est pas encore enregistrée.'''
+          replacement2='''    if(k===CLIENTS_KEY&&rv===known&&sameValue(k,local,effectiveValue(k,r.value_json))&&!pending){
+                // Le cloud et la copie locale sont confirmés identiques : témoin léger.
+                const raw=localStorage.getItem(k);
+                if(raw!==null){
+                  const fp=await clientFingerprint(raw);
+                  if(localStorage.getItem(k)===raw)nativeSet.call(localStorage,CLIENTS_BASELINE_KEY,JSON.stringify({version:rv,sha256:fp}));
+                }
+              }
+              if(known===0||rv>known){
+                // Ne pas remplacer une fiche dont la saisie n'est pas encore enregistrée.'''
+          assert s.count(needle2)==1
+          s=s.replace(needle2,replacement2)
+          needle3='''      if(local!==null&&!sameValue(k,local,next)){
+                  if(!backupBeforeRemote(k,local,rv)){markConflict(k,"backup-required");continue}
+                }
+                if(!sameValue(k,local,next)){if(next===null)rawDelete(k);else rawSet(k,next);needsRefresh=true}
+                // En cas de différences de format seulement, conserver le contenu local normalisé.'''
+          replacement3='''      if(local!==null&&!sameValue(k,local,next)){
+                  if(k===CLIENTS_KEY){
+                    // Autoriser le téléchargement seulement si les octets locaux sont
+                    // identiques à la copie vérifiée au dernier passage cloud.
+                    const raw=localStorage.getItem(k);
+                    let baseline=null;
+                    try{baseline=JSON.parse(localStorage.getItem(CLIENTS_BASELINE_KEY)||"null")}catch(e){}
+                    if(!baseline||baseline.version!==known||baseline.sha256!==await clientFingerprint(raw)||localStorage.getItem(k)!==raw){
+                      markConflict(k,"baseline-mismatch");continue;
+                    }
+                  }else if(!backupBeforeRemote(k,local,rv)){markConflict(k,"backup-required");continue}
+                }
+                if(!sameValue(k,local,next)){if(next===null)rawDelete(k);else rawSet(k,next);needsRefresh=true}
+                if(k===CLIENTS_KEY&&localStorage.getItem(k)!==null){
+                  const raw=localStorage.getItem(k);
+                  const fp=await clientFingerprint(raw);
+                  if(localStorage.getItem(k)===raw)nativeSet.call(localStorage,CLIENTS_BASELINE_KEY,JSON.stringify({version:rv,sha256:fp}));
+                }
+                // En cas de différences de format seulement, conserver le contenu local normalisé.'''
+          assert s.count(needle3)==1
+          s=s.replace(needle3,replacement3)
+          p.write_text(s,encoding="utf-8")
+      - name: Publier
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Reception V2 avec empreinte locale et sans copie volumineuse"
+          git push
