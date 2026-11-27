@@ -7,7 +7,7 @@ permissions:
   contents: write
 jobs:
   apply:
-    if: github.event.head_commit.message == 'Installer reception clients V2 avec empreinte locale'
+    if: github.event.head_commit.message == 'Corriger execution workflow reception V2'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,6 +15,7 @@ jobs:
           persist-credentials: true
       - name: Corriger le moteur V2
         run: |
+          python3 - <<'PY'
           from pathlib import Path
           import hashlib
           p=Path("index.html")
@@ -31,8 +32,7 @@ jobs:
           '''
           assert s.count(needle)==1
           s=s.replace(needle,insert+needle)
-          needle2='''    if(known===0||rv>known){
-                // Ne pas remplacer une fiche dont la saisie n'est pas encore enregistrée.'''
+          needle2='    if(known===0||rv>known){'
           replacement2='''    if(k===CLIENTS_KEY&&rv===known&&sameValue(k,local,effectiveValue(k,r.value_json))&&!pending){
                 // Le cloud et la copie locale sont confirmés identiques : témoin léger.
                 const raw=localStorage.getItem(k);
@@ -46,10 +46,10 @@ jobs:
           assert s.count(needle2)==1
           s=s.replace(needle2,replacement2)
           needle3='''      if(local!==null&&!sameValue(k,local,next)){
-                  if(!backupBeforeRemote(k,local,rv)){markConflict(k,"backup-required");continue}
-                }
-                if(!sameValue(k,local,next)){if(next===null)rawDelete(k);else rawSet(k,next);needsRefresh=true}
-                // En cas de différences de format seulement, conserver le contenu local normalisé.'''
+        if(!backupBeforeRemote(k,local,rv)){markConflict(k,"backup-required");continue}
+      }
+      if(!sameValue(k,local,next)){if(next===null)rawDelete(k);else rawSet(k,next);needsRefresh=true}
+      // En cas de différences de format seulement, conserver le contenu local normalisé.'''
           replacement3='''      if(local!==null&&!sameValue(k,local,next)){
                   if(k===CLIENTS_KEY){
                     // Autoriser le téléchargement seulement si les octets locaux sont
@@ -72,6 +72,7 @@ jobs:
           assert s.count(needle3)==1
           s=s.replace(needle3,replacement3)
           p.write_text(s,encoding="utf-8")
+          PY
       - name: Publier
         run: |
           git config user.name "github-actions[bot]"
