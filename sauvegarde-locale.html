@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sauvegarde locale — Chabanal et fils</title><meta name="robots" content="noindex,nofollow">
+<style>
+:root{font-family:system-ui,Arial,sans-serif;background:#03162e;color:#eaf2ff}*{box-sizing:border-box}
+body{max-width:760px;margin:auto;padding:18px;line-height:1.55}
+section{background:#092847;border:1px solid #275575;border-radius:12px;padding:15px;margin:14px 0}
+button,a{display:inline-block;background:#187de1;color:white;border:0;border-radius:9px;padding:12px 15px;text-decoration:none;font-weight:650;margin:5px 5px 5px 0}
+button:disabled{opacity:.5}.muted,small{color:#bfd0e5}.ok{color:#8fe6a6}.warn{color:#ffd38b}.bad{color:#ff9d9d}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#041b34;padding:12px;border-radius:8px;font-size:.86rem}
+</style></head><body>
+<h1>Sauvegarde locale — Chabanal et fils</h1>
+<p class="muted">Export local du téléphone actuellement utilisé. Cette page ne se connecte pas à Supabase, ne lance aucune synchronisation et ne modifie ni ne supprime aucune donnée.</p>
+<section><h2>1. Contrôle avant export</h2><button id="check">Analyser les données locales</button><div id="status">En attente du contrôle.</div><pre id="report">Aucune analyse effectuée.</pre></section>
+<section><h2>2. Télécharger la sauvegarde</h2><p>Le fichier contiendra les fiches clients, les suppressions, la file d’attente complète (dont la modification Gasquet), les versions locales et les données locales d’équipements identifiées.</p><button id="save" disabled>Télécharger la sauvegarde JSON</button><div id="saved"></div></section>
+<p class="warn"><strong>Important :</strong> le fichier contient des données professionnelles et personnelles. Conserve-le dans un emplacement privé et ne le partage pas. Cet export couvre les clés localStorage listées ci-dessous ; les pièces jointes stockées séparément dans IndexedDB ou dans le cloud ne sont pas incluses.</p>
+<p><a href="./">Retour à l’application</a></p>
+<script>
+(()=>{'use strict';
+const KEYS=[
+ 'metier_clients_v1_2_corrigee','metier_clients_deleted_v1','chabanal_v2_sync_queue','chabanal_v2_cloud_meta',
+ 'metier_equipement_modeles_v1','metier_equipement_attributions_v1','metier_equipement_numeros_serie_v1'
+];
+const $=id=>document.getElementById(id);
+let snapshot=null;
+const parse=(key,raw)=>{try{return {valid:true,value:JSON.parse(raw)}}catch(e){return {valid:false,error:String(e.message||e)}}};
+function inspect(){
+ snapshot=null;$('save').disabled=true;$('saved').textContent='';
+ const data={},report=[],missing=[];
+ for(const key of KEYS){
+  const raw=localStorage.getItem(key);
+  if(raw===null){missing.push(key);report.push(key+' : absent');continue}
+  const parsed=parse(key,raw);
+  if(!parsed.valid){report.push(key+' : JSON invalide — export bloqué');$('status').className='bad';$('status').textContent='Contrôle bloqué : une donnée locale est illisible. Aucun export incomplet proposé.';$('report').textContent=report.join('\n');return}
+  data[key]=parsed.value;
+  let detail='présent';
+  if(key==='metier_clients_v1_2_corrigee')detail=Array.isArray(parsed.value)?parsed.value.length+' fiches client':'format inattendu';
+  if(key==='chabanal_v2_sync_queue')detail=Object.keys(parsed.value||{}).length+' entrée(s) en attente : '+Object.keys(parsed.value||{}).join(', ');
+  report.push(key+' : '+detail);
+ }
+ const clients=data.metier_clients_v1_2_corrigee;
+ if(!Array.isArray(clients)){ $('status').className='bad';$('status').textContent='La liste clients est absente ou invalide. Export bloqué.';$('report').textContent=report.join('\n');return}
+ if(!Object.prototype.hasOwnProperty.call(data,'chabanal_v2_sync_queue')){ $('status').className='bad';$('status').textContent='La file d’attente n’est pas présente : export bloqué pour ne pas risquer de perdre la modification en attente.';$('report').textContent=report.join('\n');return}
+ const queue=data.chabanal_v2_sync_queue||{};
+ const interventionCount=clients.reduce((n,c)=>n+(Array.isArray(c?.interventions)?c.interventions.length:0),0);
+ snapshot={format:'chabanal-local-backup-v1',createdAt:new Date().toISOString(),deviceOrigin:'Téléphone sur lequel cette page est ouverte',includedKeys:KEYS.filter(k=>Object.prototype.hasOwnProperty.call(data,k)),missingKeys:missing,summary:{clients:clients.length,interventions:interventionCount,pendingQueueKeys:Object.keys(queue)},data};
+ report.push('', 'Total clients : '+clients.length,'Total interventions : '+interventionCount,'Clés en attente : '+(Object.keys(queue).join(', ')||'aucune'),'Clés absentes : '+(missing.join(', ')||'aucune'),'','Contrôle terminé. Aucune donnée modifiée.');
+ $('status').className='ok';$('status').textContent='Contrôle réussi. L’export peut être téléchargé.';
+ $('report').textContent=report.join('\n');$('save').disabled=false;
+}
+$('check').addEventListener('click',inspect);
+$('save').addEventListener('click',()=>{
+ if(!snapshot)return;
+ try{
+  const blob=new Blob([JSON.stringify(snapshot,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download='sauvegarde_chabanal_telephone_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+  $('saved').className='ok';$('saved').textContent='Téléchargement demandé. Vérifie que le fichier JSON apparaît dans le dossier Téléchargements de ton téléphone.';
+ }catch(e){$('saved').className='bad';$('saved').textContent='Échec de l’export : '+String(e.message||e)}
+});
+})();
+</script></body></html>
